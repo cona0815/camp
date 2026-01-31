@@ -178,7 +178,7 @@ export default function App() {
   };
 
   const handleLocationClick = () => {
-    // FIXED: Added '$' for string interpolation and corrected the URL structure
+    // 修正了這裡的網址格式與語法錯誤，現在會正確開啟 Google Maps 搜尋
     window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(tripInfo.location)}`, '_blank');
   };
 
