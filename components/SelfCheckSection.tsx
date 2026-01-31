@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { CarFront, Home, ClipboardList, Tent, Package, Check, Printer, User as UserIcon, Lock, Backpack } from 'lucide-react';
+import { CarFront, Home, ClipboardList, Tent, Package, Check, Printer, Backpack } from 'lucide-react';
 import { GearItem, Ingredient, User, MealPlan } from '../types';
 import { TRIP_INFO } from '../constants';
 
@@ -45,9 +45,9 @@ const SelfCheckSection: React.FC<SelfCheckSectionProps> = ({
   });
 
   const personalGear = gearList.filter(item => item.category === 'personal');
-  
+   
   const myIngredients = ingredients.filter(item => item.owner.id === currentUser.id);
-  
+   
   const toggleCheck = (id: string) => {
     setCheckedItems(prev => ({
       ...prev,
@@ -84,7 +84,7 @@ const SelfCheckSection: React.FC<SelfCheckSectionProps> = ({
     // Sort plans by Day, then by Meal order
     const sortedPlans = [...mealPlans].sort((a, b) => {
         if (a.dayLabel !== b.dayLabel) return a.dayLabel.localeCompare(b.dayLabel, 'zh-TW');
-        const order = { breakfast: 1, lunch: 2, dinner: 3 };
+        const order: Record<string, number> = { breakfast: 1, lunch: 2, dinner: 3 };
         return (order[a.mealType] || 4) - (order[b.mealType] || 4);
     });
 
@@ -104,21 +104,21 @@ const SelfCheckSection: React.FC<SelfCheckSectionProps> = ({
           body { font-family: "Microsoft JhengHei", "Heiti TC", sans-serif; padding: 40px; color: #333; line-height: 1.5; }
           h1 { text-align: center; color: #5D4632; border-bottom: 3px solid #7BC64F; padding-bottom: 10px; margin-bottom: 20px; }
           .meta { text-align: center; color: #666; font-size: 0.9em; margin-bottom: 40px; }
-          
+           
           h2 { background-color: #F2CC8F; color: #5D4632; padding: 8px 15px; border-radius: 5px; margin-top: 30px; margin-bottom: 15px; font-size: 1.2em; -webkit-print-color-adjust: exact; }
           h3 { color: #2A9D8F; border-bottom: 2px dashed #E0D8C0; padding-bottom: 5px; margin-top: 20px; font-size: 1.1em; -webkit-print-color-adjust: exact; }
-          
+           
           .list-container { display: flex; flex-wrap: wrap; gap: 10px; }
           .item-row { width: 48%; display: flex; align-items: center; margin-bottom: 8px; border-bottom: 1px dotted #ccc; padding-bottom: 2px; }
           .checkbox { width: 16px; height: 16px; border: 2px solid #5D4632; margin-right: 10px; display: inline-block; position: relative; }
-          
+           
           /* Forced Check Style for PDF */
           .checkbox.forced:after { content: '✔'; position: absolute; top: -5px; left: 1px; font-size: 18px; color: #aaa; }
           .item-name.forced, .text-forced { text-decoration: line-through; color: #aaa; }
 
           .item-name { font-weight: bold; }
           .item-owner { font-size: 0.8em; color: #888; margin-left: auto; background: #eee; padding: 1px 6px; border-radius: 10px; -webkit-print-color-adjust: exact; }
-          
+           
           @media print {
              body { padding: 0; }
              h2 { background-color: #eee !important; color: #000 !important; }
@@ -131,7 +131,6 @@ const SelfCheckSection: React.FC<SelfCheckSectionProps> = ({
           日期：${TRIP_INFO.date} | 地點：${TRIP_INFO.location} | 使用者：${currentUser.name}
         </div>
 
-        <!-- GEAR SECTION -->
         <h2>🎒 裝備清單</h2>
         
         <h3>📍 公用裝備 (分配認領)</h3>
@@ -162,7 +161,6 @@ const SelfCheckSection: React.FC<SelfCheckSectionProps> = ({
           ${personalGear.length === 0 ? '<p>無設定個人裝備</p>' : ''}
         </div>
         
-        <!-- MENU SECTION -->
         <h2 style="page-break-before: always;">🥘 菜單與食材表</h2>
         
         ${sortedPlans.map(plan => `
@@ -174,7 +172,7 @@ const SelfCheckSection: React.FC<SelfCheckSectionProps> = ({
                 <div style="background: #f9f9f9; padding: 10px; border-radius: 5px; -webkit-print-color-adjust: exact;">
                     <strong>🛒 需帶食材：</strong>
                     <div style="display: flex; flex-wrap: wrap; margin-top: 5px;">
-                        ${plan.checklist.map(item => {
+                        ${plan.checklist.map((item: any) => {
                             // Check if this item belongs to "others"
                             let isOthers = false;
                             
@@ -291,6 +289,10 @@ const SelfCheckSection: React.FC<SelfCheckSectionProps> = ({
             const isOthers = item.owner && item.owner.id !== currentUser.id;
             const isMine = item.owner?.id === currentUser.id;
             const isChecked = checkedItems[`gear-${item.id}`];
+            
+            // Safe Access for Avatar: 
+            // 如果 item.owner 裡沒有 avatar (型別定義問題)，就使用預設值
+            const ownerAvatar = (item.owner as any)?.avatar || '👤';
 
             return (
               <div 
@@ -330,7 +332,8 @@ const SelfCheckSection: React.FC<SelfCheckSectionProps> = ({
                                 ? 'bg-[#E0D8C0]/50 text-[#8C7B65]' 
                                 : 'bg-[#8ECAE6]/30 text-[#219EBC] font-bold'
                         }`}>
-                            {item.owner.avatar} {isMine ? '我負責' : `${item.owner.name} 負責`}
+                            {/* FIXED: 使用安全存取的 ownerAvatar */}
+                            {ownerAvatar} {isMine ? '我負責' : `${item.owner.name} 負責`}
                         </span>
                     ) : (
                         <span className="text-[10px] bg-[#F4A261]/20 text-[#E76F51] px-2 py-0.5 rounded-full font-bold">
