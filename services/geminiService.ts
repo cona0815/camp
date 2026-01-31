@@ -1,5 +1,4 @@
-// FIXED: Updated import to use 'Client' and 'SchemaType' from the new SDK
-import { Client, SchemaType } from "@google/genai";
+import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
 import { ShoppingItem, Recipe } from "../types";
 
 // Helper to get key dynamically
@@ -44,11 +43,21 @@ export interface GearAdviceItem {
     priority: 'high' | 'medium' | 'low';
 }
 
-const getAIClient = () => {
+// 建立一個 Helper 函式來初始化模型，避免重複代碼
+const getAIModel = (responseSchema?: any) => {
   const apiKey = getApiKey();
   if (!apiKey) throw new Error("尚未設定 API Key，請至設定頁面輸入。");
-  // FIXED: Using 'Client' instead of 'GoogleGenAI'
-  return new Client({ apiKey });
+  
+  const genAI = new GoogleGenerativeAI(apiKey);
+  const modelId = "gemini-1.5-flash"; // 使用穩定且快速的模型
+
+  return genAI.getGenerativeModel({
+    model: modelId,
+    generationConfig: {
+      responseMimeType: responseSchema ? "application/json" : "text/plain",
+      responseSchema: responseSchema,
+    },
+  });
 };
 
 export const generateCampMeal = async (
@@ -58,9 +67,40 @@ export const generateCampMeal = async (
   children: number,
   title: string
 ): Promise<GeneratedMealResponse> => {
-  const ai = getAIClient();
-  const modelId = "gemini-2.0-flash"; // Updated to latest stable model name if applicable, or keep as desired
+  
+  const schema = {
+    type: SchemaType.OBJECT,
+    properties: {
+      menuName: { type: SchemaType.STRING },
+      reason: { type: SchemaType.STRING },
+      shoppingList: {
+        type: SchemaType.ARRAY,
+        items: {
+          type: SchemaType.OBJECT,
+          properties: {
+            name: { type: SchemaType.STRING },
+            need: { type: SchemaType.STRING },
+            have: { type: SchemaType.STRING },
+            buy: { type: SchemaType.STRING },
+            checked: { type: SchemaType.BOOLEAN },
+          },
+          required: ["name", "need", "have", "buy", "checked"]
+        },
+      },
+      recipe: {
+        type: SchemaType.OBJECT,
+        properties: {
+          steps: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
+          videoQuery: { type: SchemaType.STRING },
+        },
+        required: ["steps", "videoQuery"]
+      },
+    },
+    required: ["menuName", "reason", "shoppingList", "recipe"],
+  };
 
+  const model = getAIModel(schema);
+  
   const prompt = `
     角色設定：你是一位專業的露營大廚。
     任務：請為「${mealType}」制定一份詳細的餐點計畫。
@@ -78,46 +118,8 @@ export const generateCampMeal = async (
   `;
 
   try {
-    const response = await ai.models.generateContent({
-      model: modelId,
-      contents: prompt,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: SchemaType.OBJECT,
-          properties: {
-            menuName: { type: SchemaType.STRING },
-            reason: { type: SchemaType.STRING },
-            shoppingList: {
-              type: SchemaType.ARRAY,
-              items: {
-                type: SchemaType.OBJECT,
-                properties: {
-                  name: { type: SchemaType.STRING },
-                  need: { type: SchemaType.STRING },
-                  have: { type: SchemaType.STRING },
-                  buy: { type: SchemaType.STRING },
-                  checked: { type: SchemaType.BOOLEAN },
-                },
-                required: ["name", "need", "have", "buy", "checked"]
-              },
-            },
-            recipe: {
-              type: SchemaType.OBJECT,
-              properties: {
-                steps: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
-                videoQuery: { type: SchemaType.STRING },
-              },
-              required: ["steps", "videoQuery"]
-            },
-          },
-          required: ["menuName", "reason", "shoppingList", "recipe"],
-        },
-      },
-    });
-
-    const text = response.text;
-    if (!text) throw new Error("AI 沒有回應");
+    const result = await model.generateContent(prompt);
+    const text = result.response.text();
     return JSON.parse(text);
   } catch (error) {
     console.error("Gemini API Error:", error);
@@ -129,8 +131,39 @@ export const generateCampMeal = async (
 export const generateLeftoverRecipe = async (
   ingredients: string[]
 ): Promise<GeneratedMealResponse> => {
-  const ai = getAIClient();
-  const modelId = "gemini-2.0-flash";
+  
+  const schema = {
+    type: SchemaType.OBJECT,
+    properties: {
+      menuName: { type: SchemaType.STRING },
+      reason: { type: SchemaType.STRING },
+      shoppingList: {
+        type: SchemaType.ARRAY,
+        items: {
+          type: SchemaType.OBJECT,
+          properties: {
+            name: { type: SchemaType.STRING },
+            need: { type: SchemaType.STRING },
+            have: { type: SchemaType.STRING },
+            buy: { type: SchemaType.STRING }, // Should be 0 mostly
+            checked: { type: SchemaType.BOOLEAN },
+          },
+          required: ["name", "need", "have", "buy", "checked"]
+        },
+      },
+      recipe: {
+        type: SchemaType.OBJECT,
+        properties: {
+          steps: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
+          videoQuery: { type: SchemaType.STRING },
+        },
+        required: ["steps", "videoQuery"]
+      },
+    },
+    required: ["menuName", "reason", "shoppingList", "recipe"],
+  };
+
+  const model = getAIModel(schema);
   
   const prompt = `
     角色：露營剩食救星。
@@ -144,46 +177,8 @@ export const generateLeftoverRecipe = async (
   `;
 
   try {
-    const response = await ai.models.generateContent({
-      model: modelId,
-      contents: prompt,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: SchemaType.OBJECT,
-          properties: {
-            menuName: { type: SchemaType.STRING },
-            reason: { type: SchemaType.STRING },
-            shoppingList: {
-              type: SchemaType.ARRAY,
-              items: {
-                type: SchemaType.OBJECT,
-                properties: {
-                  name: { type: SchemaType.STRING },
-                  need: { type: SchemaType.STRING },
-                  have: { type: SchemaType.STRING },
-                  buy: { type: SchemaType.STRING }, // Should be 0 mostly
-                  checked: { type: SchemaType.BOOLEAN },
-                },
-                required: ["name", "need", "have", "buy", "checked"]
-              },
-            },
-            recipe: {
-              type: SchemaType.OBJECT,
-              properties: {
-                steps: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
-                videoQuery: { type: SchemaType.STRING },
-              },
-              required: ["steps", "videoQuery"]
-            },
-          },
-          required: ["menuName", "reason", "shoppingList", "recipe"],
-        },
-      },
-    });
-
-    const text = response.text;
-    if (!text) throw new Error("AI 沒有回應");
+    const result = await model.generateContent(prompt);
+    const text = result.response.text();
     return JSON.parse(text);
   } catch (error) {
     console.error("Leftover API Error:", error);
@@ -192,8 +187,20 @@ export const generateLeftoverRecipe = async (
 };
 
 export const generateDishRecipe = async (dishName: string): Promise<SingleDishResponse> => {
-  const ai = getAIClient();
-  const modelId = "gemini-2.0-flash";
+  
+  const schema = {
+    type: SchemaType.OBJECT,
+    properties: {
+      dishName: { type: SchemaType.STRING },
+      description: { type: SchemaType.STRING },
+      ingredients: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
+      steps: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
+      videoQuery: { type: SchemaType.STRING },
+    },
+    required: ["dishName", "description", "ingredients", "steps", "videoQuery"],
+  };
+
+  const model = getAIModel(schema);
 
   const prompt = `
     料理：「${dishName}」。
@@ -206,27 +213,8 @@ export const generateDishRecipe = async (dishName: string): Promise<SingleDishRe
   `;
 
   try {
-    const response = await ai.models.generateContent({
-      model: modelId,
-      contents: prompt,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: SchemaType.OBJECT,
-          properties: {
-            dishName: { type: SchemaType.STRING },
-            description: { type: SchemaType.STRING },
-            ingredients: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
-            steps: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
-            videoQuery: { type: SchemaType.STRING },
-          },
-          required: ["dishName", "description", "ingredients", "steps", "videoQuery"],
-        },
-      }
-    });
-
-    const text = response.text;
-    if (!text) throw new Error("AI 無法生成");
+    const result = await model.generateContent(prompt);
+    const text = result.response.text();
     return JSON.parse(text);
   } catch (error) {
     console.error("Gemini Dish Recipe Error:", error);
@@ -240,8 +228,21 @@ export const analyzeGearNeeds = async (
     weather: string,
     currentGear: string[]
 ): Promise<GearAdviceItem[]> => {
-    const ai = getAIClient();
-    const modelId = "gemini-2.0-flash";
+    
+    const schema = {
+        type: SchemaType.ARRAY,
+        items: {
+            type: SchemaType.OBJECT,
+            properties: {
+                item: { type: SchemaType.STRING },
+                reason: { type: SchemaType.STRING },
+                priority: { type: SchemaType.STRING, enum: ['high', 'medium', 'low'] }
+            },
+            required: ["item", "reason", "priority"]
+        }
+    };
+
+    const model = getAIModel(schema);
 
     const prompt = `
       角色：資深露營教練。
@@ -258,29 +259,11 @@ export const analyzeGearNeeds = async (
     `;
 
     try {
-        const response = await ai.models.generateContent({
-            model: modelId,
-            contents: prompt,
-            config: {
-                responseMimeType: "application/json",
-                responseSchema: {
-                    type: SchemaType.ARRAY,
-                    items: {
-                        type: SchemaType.OBJECT,
-                        properties: {
-                            item: { type: SchemaType.STRING },
-                            reason: { type: SchemaType.STRING },
-                            priority: { type: SchemaType.STRING, enum: ['high', 'medium', 'low'] }
-                        },
-                        required: ["item", "reason", "priority"]
-                    }
-                }
-            }
-        });
-        
-        const text = response.text;
-        if (!text) return [];
-        return JSON.parse(text);
+        const result = await model.generateContent(prompt);
+        const text = result.response.text();
+        // 有時候模型會回傳 Markdown code block，做個簡單過濾
+        const cleanText = text.replace(/```json|```/g, "").trim();
+        return JSON.parse(cleanText);
     } catch (error) {
         console.error("Gear Advisor Error:", error);
         throw error;
@@ -288,29 +271,28 @@ export const analyzeGearNeeds = async (
 }
 
 export const identifyIngredientsFromImage = async (base64Image: string): Promise<string[]> => {
-  const ai = getAIClient();
-  const modelId = "gemini-2.0-flash";
+  const schema = {
+    type: SchemaType.ARRAY,
+    items: { type: SchemaType.STRING }
+  };
+
+  const model = getAIModel(schema);
 
   try {
-    const response = await ai.models.generateContent({
-      model: modelId,
-      contents: {
-        parts: [
-          { inlineData: { mimeType: "image/jpeg", data: base64Image } },
-          { text: "辨識圖片中的食材與飲料。回傳 JSON Array 字串陣列 (繁體中文)。" }
-        ]
-      },
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: SchemaType.ARRAY,
-          items: { type: SchemaType.STRING }
-        }
-      }
-    });
+    // 移除 base64 的前綴 (data:image/jpeg;base64,) 如果有的話，只保留數據部分
+    const base64Data = base64Image.includes(',') ? base64Image.split(',')[1] : base64Image;
 
-    const text = response.text;
-    if (!text) return [];
+    const result = await model.generateContent([
+        { 
+            inlineData: { 
+                mimeType: "image/jpeg", 
+                data: base64Data 
+            } 
+        },
+        { text: "辨識圖片中的食材與飲料。回傳 JSON Array 字串陣列 (繁體中文)。" }
+    ]);
+
+    const text = result.response.text();
     return JSON.parse(text);
   } catch (error) {
     console.error("Gemini Vision Error:", error);
@@ -319,8 +301,19 @@ export const identifyIngredientsFromImage = async (base64Image: string): Promise
 };
 
 export const analyzeMenuFromImage = async (base64Image: string): Promise<AnalyzedMenuResponse> => {
-  const ai = getAIClient();
-  const modelId = "gemini-2.0-flash";
+  const schema = {
+    type: SchemaType.OBJECT,
+    properties: {
+      menuName: { type: SchemaType.STRING },
+      reason: { type: SchemaType.STRING },
+      ingredients: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
+      steps: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
+      videoQuery: { type: SchemaType.STRING },
+    },
+    required: ["menuName", "reason", "ingredients", "steps", "videoQuery"],
+  };
+
+  const model = getAIModel(schema);
 
   const prompt = `
     分析圖片中的料理/菜單。
@@ -328,32 +321,19 @@ export const analyzeMenuFromImage = async (base64Image: string): Promise<Analyze
   `;
 
   try {
-    const response = await ai.models.generateContent({
-      model: modelId,
-      contents: {
-        parts: [
-          { inlineData: { mimeType: "image/jpeg", data: base64Image } },
-          { text: prompt }
-        ]
-      },
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: SchemaType.OBJECT,
-          properties: {
-            menuName: { type: SchemaType.STRING },
-            reason: { type: SchemaType.STRING },
-            ingredients: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
-            steps: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
-            videoQuery: { type: SchemaType.STRING },
-          },
-          required: ["menuName", "reason", "ingredients", "steps", "videoQuery"],
-        },
-      }
-    });
+    const base64Data = base64Image.includes(',') ? base64Image.split(',')[1] : base64Image;
 
-    const text = response.text;
-    if (!text) throw new Error("AI 無法分析");
+    const result = await model.generateContent([
+        { 
+            inlineData: { 
+                mimeType: "image/jpeg", 
+                data: base64Data 
+            } 
+        },
+        { text: prompt }
+    ]);
+
+    const text = result.response.text();
     return JSON.parse(text);
   } catch (error) {
     console.error("Gemini Menu Analysis Error:", error);
@@ -362,8 +342,29 @@ export const analyzeMenuFromImage = async (base64Image: string): Promise<Analyze
 };
 
 export const parseMenuItinerary = async (input: string, type: 'text' | 'image'): Promise<ItineraryItem[]> => {
-  const ai = getAIClient();
-  const modelId = "gemini-2.0-flash";
+  const schema = {
+    type: SchemaType.OBJECT,
+    properties: {
+      plans: {
+        type: SchemaType.ARRAY,
+        items: {
+          type: SchemaType.OBJECT,
+          properties: {
+            dayLabel: { type: SchemaType.STRING },
+            mealType: { type: SchemaType.STRING, enum: ['breakfast', 'lunch', 'dinner'] },
+            menuName: { type: SchemaType.STRING },
+            ingredients: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
+            reason: { type: SchemaType.STRING },
+            steps: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
+            videoQuery: { type: SchemaType.STRING },
+          },
+          required: ["dayLabel", "mealType", "menuName", "ingredients", "steps", "videoQuery", "reason"]
+        }
+      }
+    }
+  };
+
+  const model = getAIModel(schema);
 
   const promptText = `
     分析露營菜單行程表。
@@ -372,44 +373,25 @@ export const parseMenuItinerary = async (input: string, type: 'text' | 'image'):
     若同一餐有多道菜，請拆開。
   `;
 
-  const contents = type === 'text' 
-    ? { parts: [{ text: promptText }, { text: `內容:\n${input}` }] }
-    : { parts: [{ inlineData: { mimeType: "image/jpeg", data: input } }, { text: promptText }] };
-
   try {
-    const response = await ai.models.generateContent({
-      model: modelId,
-      contents: contents,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: SchemaType.OBJECT,
-          properties: {
-            plans: {
-              type: SchemaType.ARRAY,
-              items: {
-                type: SchemaType.OBJECT,
-                properties: {
-                  dayLabel: { type: SchemaType.STRING },
-                  mealType: { type: SchemaType.STRING, enum: ['breakfast', 'lunch', 'dinner'] },
-                  menuName: { type: SchemaType.STRING },
-                  ingredients: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
-                  reason: { type: SchemaType.STRING },
-                  steps: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
-                  videoQuery: { type: SchemaType.STRING },
-                },
-                required: ["dayLabel", "mealType", "menuName", "ingredients", "steps", "videoQuery", "reason"]
-              }
-            }
-          }
-        },
-      }
-    });
+    let parts: any[] = [{ text: promptText }];
 
-    const text = response.text;
-    if (!text) throw new Error("AI 無法分析");
-    const result = JSON.parse(text);
-    return result.plans || [];
+    if (type === 'text') {
+        parts.push({ text: `內容:\n${input}` });
+    } else {
+        const base64Data = input.includes(',') ? input.split(',')[1] : input;
+        parts.unshift({ 
+            inlineData: { 
+                mimeType: "image/jpeg", 
+                data: base64Data 
+            } 
+        });
+    }
+
+    const result = await model.generateContent(parts);
+    const text = result.response.text();
+    const json = JSON.parse(text);
+    return json.plans || [];
   } catch (error) {
     console.error("Gemini Itinerary Analysis Error:", error);
     throw error;
