@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import { ShoppingItem, Recipe } from "../types";
 
 // Helper to get key dynamically
@@ -43,18 +43,20 @@ export interface GearAdviceItem {
     priority: 'high' | 'medium' | 'low';
 }
 
-// 建立一個 Helper 函式來初始化模型，避免重複代碼
+// 建立一個 Helper 函式來初始化模型
 const getAIModel = (responseSchema?: any) => {
   const apiKey = getApiKey();
   if (!apiKey) throw new Error("尚未設定 API Key，請至設定頁面輸入。");
   
   const genAI = new GoogleGenerativeAI(apiKey);
-  const modelId = "gemini-1.5-flash"; // 使用穩定且快速的模型
+  // 使用穩定版 gemini-1.5-flash
+  const modelId = "gemini-1.5-flash"; 
 
   return genAI.getGenerativeModel({
     model: modelId,
     generationConfig: {
       responseMimeType: responseSchema ? "application/json" : "text/plain",
+      // 注意：這裡直接將 Schema 傳入，SDK 會自動處理
       responseSchema: responseSchema,
     },
   });
@@ -68,30 +70,31 @@ export const generateCampMeal = async (
   title: string
 ): Promise<GeneratedMealResponse> => {
   
+  // FIXED: 使用字串 "OBJECT", "STRING" 等代替 SchemaType Enum，解決 SDK 版本相容問題
   const schema = {
-    type: SchemaType.OBJECT,
+    type: "OBJECT",
     properties: {
-      menuName: { type: SchemaType.STRING },
-      reason: { type: SchemaType.STRING },
+      menuName: { type: "STRING" },
+      reason: { type: "STRING" },
       shoppingList: {
-        type: SchemaType.ARRAY,
+        type: "ARRAY",
         items: {
-          type: SchemaType.OBJECT,
+          type: "OBJECT",
           properties: {
-            name: { type: SchemaType.STRING },
-            need: { type: SchemaType.STRING },
-            have: { type: SchemaType.STRING },
-            buy: { type: SchemaType.STRING },
-            checked: { type: SchemaType.BOOLEAN },
+            name: { type: "STRING" },
+            need: { type: "STRING" },
+            have: { type: "STRING" },
+            buy: { type: "STRING" },
+            checked: { type: "BOOLEAN" },
           },
           required: ["name", "need", "have", "buy", "checked"]
         },
       },
       recipe: {
-        type: SchemaType.OBJECT,
+        type: "OBJECT",
         properties: {
-          steps: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
-          videoQuery: { type: SchemaType.STRING },
+          steps: { type: "ARRAY", items: { type: "STRING" } },
+          videoQuery: { type: "STRING" },
         },
         required: ["steps", "videoQuery"]
       },
@@ -133,29 +136,29 @@ export const generateLeftoverRecipe = async (
 ): Promise<GeneratedMealResponse> => {
   
   const schema = {
-    type: SchemaType.OBJECT,
+    type: "OBJECT",
     properties: {
-      menuName: { type: SchemaType.STRING },
-      reason: { type: SchemaType.STRING },
+      menuName: { type: "STRING" },
+      reason: { type: "STRING" },
       shoppingList: {
-        type: SchemaType.ARRAY,
+        type: "ARRAY",
         items: {
-          type: SchemaType.OBJECT,
+          type: "OBJECT",
           properties: {
-            name: { type: SchemaType.STRING },
-            need: { type: SchemaType.STRING },
-            have: { type: SchemaType.STRING },
-            buy: { type: SchemaType.STRING }, // Should be 0 mostly
-            checked: { type: SchemaType.BOOLEAN },
+            name: { type: "STRING" },
+            need: { type: "STRING" },
+            have: { type: "STRING" },
+            buy: { type: "STRING" }, // Should be 0 mostly
+            checked: { type: "BOOLEAN" },
           },
           required: ["name", "need", "have", "buy", "checked"]
         },
       },
       recipe: {
-        type: SchemaType.OBJECT,
+        type: "OBJECT",
         properties: {
-          steps: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
-          videoQuery: { type: SchemaType.STRING },
+          steps: { type: "ARRAY", items: { type: "STRING" } },
+          videoQuery: { type: "STRING" },
         },
         required: ["steps", "videoQuery"]
       },
@@ -189,13 +192,13 @@ export const generateLeftoverRecipe = async (
 export const generateDishRecipe = async (dishName: string): Promise<SingleDishResponse> => {
   
   const schema = {
-    type: SchemaType.OBJECT,
+    type: "OBJECT",
     properties: {
-      dishName: { type: SchemaType.STRING },
-      description: { type: SchemaType.STRING },
-      ingredients: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
-      steps: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
-      videoQuery: { type: SchemaType.STRING },
+      dishName: { type: "STRING" },
+      description: { type: "STRING" },
+      ingredients: { type: "ARRAY", items: { type: "STRING" } },
+      steps: { type: "ARRAY", items: { type: "STRING" } },
+      videoQuery: { type: "STRING" },
     },
     required: ["dishName", "description", "ingredients", "steps", "videoQuery"],
   };
@@ -230,13 +233,13 @@ export const analyzeGearNeeds = async (
 ): Promise<GearAdviceItem[]> => {
     
     const schema = {
-        type: SchemaType.ARRAY,
+        type: "ARRAY",
         items: {
-            type: SchemaType.OBJECT,
+            type: "OBJECT",
             properties: {
-                item: { type: SchemaType.STRING },
-                reason: { type: SchemaType.STRING },
-                priority: { type: SchemaType.STRING, enum: ['high', 'medium', 'low'] }
+                item: { type: "STRING" },
+                reason: { type: "STRING" },
+                priority: { type: "STRING", enum: ['high', 'medium', 'low'] }
             },
             required: ["item", "reason", "priority"]
         }
@@ -261,7 +264,7 @@ export const analyzeGearNeeds = async (
     try {
         const result = await model.generateContent(prompt);
         const text = result.response.text();
-        // 有時候模型會回傳 Markdown code block，做個簡單過濾
+        // 移除 Markdown code block (如果有)
         const cleanText = text.replace(/```json|```/g, "").trim();
         return JSON.parse(cleanText);
     } catch (error) {
@@ -272,14 +275,14 @@ export const analyzeGearNeeds = async (
 
 export const identifyIngredientsFromImage = async (base64Image: string): Promise<string[]> => {
   const schema = {
-    type: SchemaType.ARRAY,
-    items: { type: SchemaType.STRING }
+    type: "ARRAY",
+    items: { type: "STRING" }
   };
 
   const model = getAIModel(schema);
 
   try {
-    // 移除 base64 的前綴 (data:image/jpeg;base64,) 如果有的話，只保留數據部分
+    // 移除 base64 的前綴，只保留數據部分
     const base64Data = base64Image.includes(',') ? base64Image.split(',')[1] : base64Image;
 
     const result = await model.generateContent([
@@ -302,13 +305,13 @@ export const identifyIngredientsFromImage = async (base64Image: string): Promise
 
 export const analyzeMenuFromImage = async (base64Image: string): Promise<AnalyzedMenuResponse> => {
   const schema = {
-    type: SchemaType.OBJECT,
+    type: "OBJECT",
     properties: {
-      menuName: { type: SchemaType.STRING },
-      reason: { type: SchemaType.STRING },
-      ingredients: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
-      steps: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
-      videoQuery: { type: SchemaType.STRING },
+      menuName: { type: "STRING" },
+      reason: { type: "STRING" },
+      ingredients: { type: "ARRAY", items: { type: "STRING" } },
+      steps: { type: "ARRAY", items: { type: "STRING" } },
+      videoQuery: { type: "STRING" },
     },
     required: ["menuName", "reason", "ingredients", "steps", "videoQuery"],
   };
@@ -343,20 +346,20 @@ export const analyzeMenuFromImage = async (base64Image: string): Promise<Analyze
 
 export const parseMenuItinerary = async (input: string, type: 'text' | 'image'): Promise<ItineraryItem[]> => {
   const schema = {
-    type: SchemaType.OBJECT,
+    type: "OBJECT",
     properties: {
       plans: {
-        type: SchemaType.ARRAY,
+        type: "ARRAY",
         items: {
-          type: SchemaType.OBJECT,
+          type: "OBJECT",
           properties: {
-            dayLabel: { type: SchemaType.STRING },
-            mealType: { type: SchemaType.STRING, enum: ['breakfast', 'lunch', 'dinner'] },
-            menuName: { type: SchemaType.STRING },
-            ingredients: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
-            reason: { type: SchemaType.STRING },
-            steps: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
-            videoQuery: { type: SchemaType.STRING },
+            dayLabel: { type: "STRING" },
+            mealType: { type: "STRING", enum: ['breakfast', 'lunch', 'dinner'] },
+            menuName: { type: "STRING" },
+            ingredients: { type: "ARRAY", items: { type: "STRING" } },
+            reason: { type: "STRING" },
+            steps: { type: "ARRAY", items: { type: "STRING" } },
+            videoQuery: { type: "STRING" },
           },
           required: ["dayLabel", "mealType", "menuName", "ingredients", "steps", "videoQuery", "reason"]
         }
