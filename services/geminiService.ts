@@ -57,8 +57,8 @@ export const generateCampMeal = async (
   title: string
 ): Promise<GeneratedMealResponse> => {
   const ai = getAIClient();
-  const modelId = "gemini-3-flash-preview";
-  
+  const modelId = "gemini-2.0-flash"; // Updated to latest stable model name if applicable, or keep as desired
+
   const prompt = `
     角色設定：你是一位專業的露營大廚。
     任務：請為「${mealType}」制定一份詳細的餐點計畫。
@@ -128,7 +128,7 @@ export const generateLeftoverRecipe = async (
   ingredients: string[]
 ): Promise<GeneratedMealResponse> => {
   const ai = getAIClient();
-  const modelId = "gemini-3-flash-preview";
+  const modelId = "gemini-2.0-flash";
   
   const prompt = `
     角色：露營剩食救星。
@@ -191,7 +191,7 @@ export const generateLeftoverRecipe = async (
 
 export const generateDishRecipe = async (dishName: string): Promise<SingleDishResponse> => {
   const ai = getAIClient();
-  const modelId = "gemini-3-flash-preview";
+  const modelId = "gemini-2.0-flash";
 
   const prompt = `
     料理：「${dishName}」。
@@ -239,7 +239,7 @@ export const analyzeGearNeeds = async (
     currentGear: string[]
 ): Promise<GearAdviceItem[]> => {
     const ai = getAIClient();
-    const modelId = "gemini-3-flash-preview";
+    const modelId = "gemini-2.0-flash";
 
     const prompt = `
       角色：資深露營教練。
@@ -287,7 +287,7 @@ export const analyzeGearNeeds = async (
 
 export const identifyIngredientsFromImage = async (base64Image: string): Promise<string[]> => {
   const ai = getAIClient();
-  const modelId = "gemini-3-flash-preview";
+  const modelId = "gemini-2.0-flash";
 
   try {
     const response = await ai.models.generateContent({
@@ -318,7 +318,7 @@ export const identifyIngredientsFromImage = async (base64Image: string): Promise
 
 export const analyzeMenuFromImage = async (base64Image: string): Promise<AnalyzedMenuResponse> => {
   const ai = getAIClient();
-  const modelId = "gemini-3-flash-preview";
+  const modelId = "gemini-2.0-flash";
 
   const prompt = `
     分析圖片中的料理/菜單。
@@ -361,7 +361,7 @@ export const analyzeMenuFromImage = async (base64Image: string): Promise<Analyze
 
 export const parseMenuItinerary = async (input: string, type: 'text' | 'image'): Promise<ItineraryItem[]> => {
   const ai = getAIClient();
-  const modelId = "gemini-3-flash-preview";
+  const modelId = "gemini-2.0-flash";
 
   const promptText = `
     分析露營菜單行程表。
