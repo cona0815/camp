@@ -1,0 +1,539 @@
+import React, { useState, useEffect } from 'react';
+import { Users, X, UserPlus, UserMinus, MapPin, Calendar, Type, Settings, Key, Database, Save, CheckCircle, HelpCircle, Copy, ExternalLink, ChevronDown, ChevronUp, AlertTriangle, Trash2, Shield, Lock, Image as ImageIcon, ArrowRight, Edit2 } from 'lucide-react';
+import { User, TripInfo } from '../types';
+import { AVATAR_POOL } from '../constants';
+import { getGasUrl, setGasUrl } from '../services/storage';
+
+interface SettingsModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  members: User[];
+  setMembers: React.Dispatch<React.SetStateAction<User[]>>;
+  tripInfo: TripInfo;
+  setTripInfo: React.Dispatch<React.SetStateAction<TripInfo>>;
+  currentUser: User;
+  onResetTrip?: () => void;
+  onEnableAdmin?: () => void;
+}
+
+// The backend code for the user to copy
+const GAS_BACKEND_CODE = `function doGet(e) {
+  var lock = LockService.getScriptLock();
+  lock.tryLock(10000);
+  try {
+    var doc = SpreadsheetApp.getActiveSpreadsheet();
+    var sheet = doc.getSheetByName('DB');
+    if (!sheet) return ContentService.createTextOutput(JSON.stringify({ status: 'empty' })).setMimeType(ContentService.MimeType.JSON);
+    var data = sheet.getRange('A1').getValue();
+    if (!data) return ContentService.createTextOutput(JSON.stringify({ status: 'empty' })).setMimeType(ContentService.MimeType.JSON);
+    return ContentService.createTextOutput(data).setMimeType(ContentService.MimeType.JSON);
+  } catch (e) {
+    return ContentService.createTextOutput(JSON.stringify({ status: 'error', message: e.toString() })).setMimeType(ContentService.MimeType.JSON);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function doPost(e) {
+  var lock = LockService.getScriptLock();
+  lock.tryLock(10000);
+  try {
+    var doc = SpreadsheetApp.getActiveSpreadsheet();
+    var sheet = doc.getSheetByName('DB');
+    if (!sheet) {
+      sheet = doc.insertSheet('DB');
+      var sheets = doc.getSheets();
+      if (sheets.length > 1 && sheets[0].getName() !== 'DB') {
+         // Optional: doc.deleteSheet(sheets[0]); 
+      }
+    }
+    var payload = e.postData.contents;
+    sheet.getRange('A1').setValue(payload);
+    return ContentService.createTextOutput(JSON.stringify({ status: 'success' })).setMimeType(ContentService.MimeType.JSON);
+  } catch (e) {
+    return ContentService.createTextOutput(JSON.stringify({ status: 'error', message: e.toString() })).setMimeType(ContentService.MimeType.JSON);
+  } finally {
+    lock.releaseLock();
+  }
+}`;
+
+const SettingsModal: React.FC<SettingsModalProps> = ({ 
+  isOpen, 
+  onClose, 
+  members, 
+  setMembers, 
+  tripInfo, 
+  setTripInfo, 
+  currentUser,
+  onResetTrip,
+  onEnableAdmin
+}) => {
+  const [newMemberName, setNewMemberName] = useState('');
+  const [activeTab, setActiveTab] = useState<'info' | 'members' | 'system'>('info');
+  
+  // System Config State
+  const [apiKey, setApiKey] = useState('');
+  const [gasUrl, setGasUrlState] = useState('');
+  const [saveStatus, setSaveStatus] = useState('');
+  
+  // Tutorial Toggles
+  const [showGeminiHelp, setShowGeminiHelp] = useState(false);
+  const [showGasHelp, setShowGasHelp] = useState(false);
+  const [copyStatus, setCopyStatus] = useState('');
+  
+  // Admin Login State
+  const [adminPassword, setAdminPassword] = useState('');
+  const [showAdminLogin, setShowAdminLogin] = useState(false);
+  const [adminError, setAdminError] = useState('');
+
+  // Avatar Picker State
+  const [pickingAvatarForId, setPickingAvatarForId] = useState<string | null>(null);
+
+  const isAdmin = currentUser.isAdmin;
+
+  useEffect(() => {
+    if (isOpen) {
+        setApiKey(localStorage.getItem('tanuki_gemini_key') || '');
+        setGasUrlState(getGasUrl());
+        // Reset Admin Login UI
+        setShowAdminLogin(false);
+        setAdminPassword('');
+        setAdminError('');
+    }
+  }, [isOpen]);
+
+  if (!isOpen) return null;
+
+  const handleSaveSystemConfig = () => {
+    localStorage.setItem('tanuki_gemini_key', apiKey.trim());
+    setGasUrl(gasUrl.trim());
+    setSaveStatus('已儲存！');
+    setTimeout(() => setSaveStatus(''), 2000);
+  };
+
+  const handleCopyCode = () => {
+    navigator.clipboard.writeText(GAS_BACKEND_CODE);
+    setCopyStatus('已複製！');
+    setTimeout(() => setCopyStatus(''), 2000);
+  };
+
+  const handleAddMember = () => {
+    if (!newMemberName.trim()) return;
+    const randomAvatar = AVATAR_POOL[Math.floor(Math.random() * AVATAR_POOL.length)];
+    const newMember: User = {
+      id: `user_${Date.now()}`,
+      name: newMemberName,
+      avatar: randomAvatar
+    };
+    setMembers([...members, newMember]);
+    setNewMemberName('');
+  };
+
+  const handleRemoveMember = (id: string) => {
+    if (members.length <= 1) {
+      alert("至少要有一位成員！");
+      return;
+    }
+    if (id === currentUser.id) {
+      alert("不能將自己移出名單喔！");
+      return;
+    }
+    if (window.confirm("確定要移除這位成員嗎？")) {
+      setMembers(members.filter(m => m.id !== id));
+    }
+  };
+
+  const handleUpdateAvatar = (memberId: string, newAvatar: string) => {
+      setMembers(prev => prev.map(m => 
+          m.id === memberId ? { ...m, avatar: newAvatar } : m
+      ));
+      setPickingAvatarForId(null);
+  };
+
+  const handleChangeInfo = (field: keyof TripInfo, value: string) => {
+    setTripInfo(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleAdminAuth = () => {
+      if (adminPassword === 'young') {
+          if(onEnableAdmin) onEnableAdmin();
+          setAdminPassword('');
+          setShowAdminLogin(false);
+      } else {
+          setAdminError('密碼錯誤！(提示: young)');
+          setAdminPassword('');
+      }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
+      <div className="bg-[#FFFEF5] w-full max-w-md rounded-3xl shadow-xl overflow-hidden border-4 border-[#E0D8C0] flex flex-col max-h-[90vh] relative">
+        
+        {/* Avatar Picker Overlay */}
+        {pickingAvatarForId && (
+            <div className="absolute inset-0 z-50 bg-[#FFFEF5] flex flex-col animate-fade-in">
+                <div className="bg-[#E76F51] p-4 flex justify-between items-center text-white shrink-0">
+                    <h3 className="font-bold text-lg">選擇動物頭像</h3>
+                    <button onClick={() => setPickingAvatarForId(null)} className="p-1 hover:bg-white/20 rounded-full transition-colors">
+                        <X size={24} />
+                    </button>
+                </div>
+                <div className="flex-1 overflow-y-auto p-4 grid grid-cols-5 gap-3">
+                    {AVATAR_POOL.map((avatar, idx) => (
+                        <button
+                            key={idx}
+                            onClick={() => handleUpdateAvatar(pickingAvatarForId, avatar)}
+                            className="text-3xl p-2 rounded-xl hover:bg-[#E0D8C0]/30 border-2 border-transparent hover:border-[#E76F51] transition-all active:scale-90"
+                        >
+                            {avatar}
+                        </button>
+                    ))}
+                </div>
+            </div>
+        )}
+
+        <div className="bg-[#7BC64F] p-4 flex justify-between items-center text-white shrink-0">
+          <h3 className="font-bold text-lg flex items-center gap-2">
+            <Settings size={20} /> 露營計畫設定
+          </h3>
+          <button onClick={onClose} className="p-1 hover:bg-white/20 rounded-full transition-colors">
+            <X size={24} />
+          </button>
+        </div>
+
+        {/* --- Not Admin Warning Block --- */}
+        {!isAdmin && (
+            <div className="bg-[#F2CC8F]/20 p-4 border-b border-[#E0D8C0]">
+                {!showAdminLogin ? (
+                    <div className="flex items-center justify-between">
+                        <div className="text-xs text-[#8C7B65] font-bold">
+                            <Lock size={14} className="inline mr-1" />
+                            目前為一般成員模式 (僅檢視)
+                        </div>
+                        <button 
+                            onClick={() => setShowAdminLogin(true)}
+                            className="text-[#E76F51] bg-white border border-[#E76F51] px-3 py-1.5 rounded-full text-xs font-bold hover:bg-[#E76F51] hover:text-white transition-all shadow-sm active:scale-95"
+                        >
+                            我是島主 (登入)
+                        </button>
+                    </div>
+                ) : (
+                    <div className="animate-fade-in">
+                         <div className="flex justify-between items-center mb-2">
+                            <label className="text-xs font-bold text-[#E76F51]">請輸入島主密碼：</label>
+                            <button onClick={() => setShowAdminLogin(false)} className="text-[#8C7B65] p-1"><X size={14}/></button>
+                         </div>
+                         <div className="flex gap-2">
+                             <input 
+                                type="password" 
+                                value={adminPassword}
+                                onChange={(e) => { setAdminPassword(e.target.value); setAdminError(''); }}
+                                placeholder="密碼..."
+                                autoFocus
+                                className="flex-1 bg-white border border-[#E0D8C0] rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#E76F51]"
+                                onKeyDown={(e) => e.key === 'Enter' && handleAdminAuth()}
+                             />
+                             <button 
+                                onClick={handleAdminAuth}
+                                className="bg-[#E76F51] text-white px-3 py-2 rounded-lg font-bold text-sm shadow-sm active:scale-95"
+                             >
+                                <ArrowRight size={16} />
+                             </button>
+                         </div>
+                         {adminError && <p className="text-[#E76F51] text-[10px] mt-1 font-bold">{adminError}</p>}
+                    </div>
+                )}
+            </div>
+        )}
+
+        {/* Tabs */}
+        <div className="flex border-b border-[#E0D8C0] bg-white shrink-0">
+          <button 
+            onClick={() => setActiveTab('info')}
+            className={`flex-1 py-3 text-sm font-bold transition-colors ${activeTab === 'info' ? 'text-[#7BC64F] border-b-2 border-[#7BC64F] bg-[#E9F5D8]/30' : 'text-[#8C7B65]'}`}
+          >
+            活動
+          </button>
+          <button 
+            onClick={() => setActiveTab('members')}
+            className={`flex-1 py-3 text-sm font-bold transition-colors ${activeTab === 'members' ? 'text-[#7BC64F] border-b-2 border-[#7BC64F] bg-[#E9F5D8]/30' : 'text-[#8C7B65]'}`}
+          >
+            成員
+          </button>
+          <button 
+            onClick={() => setActiveTab('system')}
+            className={`flex-1 py-3 text-sm font-bold transition-colors ${activeTab === 'system' ? 'text-[#7BC64F] border-b-2 border-[#7BC64F] bg-[#E9F5D8]/30' : 'text-[#8C7B65]'}`}
+          >
+            系統
+          </button>
+        </div>
+        
+        <div className="p-5 overflow-y-auto scrollbar-hide">
+          {activeTab === 'info' && (
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-[#8C7B65] mb-1 flex items-center gap-1">
+                  <Type size={14}/> 活動名稱
+                </label>
+                <input 
+                  type="text" 
+                  value={tripInfo.title}
+                  onChange={(e) => handleChangeInfo('title', e.target.value)}
+                  disabled={!isAdmin}
+                  className={`w-full bg-[#F9F7F2] border-2 border-[#E0D8C0] rounded-xl px-3 py-2 text-sm text-[#5D4632] ${!isAdmin ? 'opacity-70 cursor-not-allowed bg-[#E0D8C0]/20' : 'focus:outline-none focus:border-[#7BC64F]'}`}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-[#8C7B65] mb-1 flex items-center gap-1">
+                  <Calendar size={14}/> 日期
+                </label>
+                <input 
+                  type="text" 
+                  value={tripInfo.date}
+                  onChange={(e) => handleChangeInfo('date', e.target.value)}
+                  disabled={!isAdmin}
+                  className={`w-full bg-[#F9F7F2] border-2 border-[#E0D8C0] rounded-xl px-3 py-2 text-sm text-[#5D4632] ${!isAdmin ? 'opacity-70 cursor-not-allowed bg-[#E0D8C0]/20' : 'focus:outline-none focus:border-[#7BC64F]'}`}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-[#8C7B65] mb-1 flex items-center gap-1">
+                  <MapPin size={14}/> 地點
+                </label>
+                <input 
+                  type="text" 
+                  value={tripInfo.location}
+                  onChange={(e) => handleChangeInfo('location', e.target.value)}
+                  disabled={!isAdmin}
+                  className={`w-full bg-[#F9F7F2] border-2 border-[#E0D8C0] rounded-xl px-3 py-2 text-sm text-[#5D4632] ${!isAdmin ? 'opacity-70 cursor-not-allowed bg-[#E0D8C0]/20' : 'focus:outline-none focus:border-[#7BC64F]'}`}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-[#8C7B65] mb-1 flex items-center gap-1">
+                  <ImageIcon size={14}/> 相簿連結 (Google Photos)
+                </label>
+                <input 
+                  type="text" 
+                  value={tripInfo.albumUrl || ''}
+                  onChange={(e) => handleChangeInfo('albumUrl', e.target.value)}
+                  disabled={!isAdmin}
+                  placeholder="https://photos.app.goo.gl/..."
+                  className={`w-full bg-[#F9F7F2] border-2 border-[#E0D8C0] rounded-xl px-3 py-2 text-sm text-[#5D4632] ${!isAdmin ? 'opacity-70 cursor-not-allowed bg-[#E0D8C0]/20' : 'focus:outline-none focus:border-[#7BC64F]'}`}
+                />
+              </div>
+
+              {/* --- Admin Only: New Trip Section --- */}
+              {isAdmin && onResetTrip && (
+                  <div className="border-t-2 border-[#E76F51]/20 pt-6 mt-6">
+                      <h4 className="text-xs font-bold text-[#E76F51] mb-2 uppercase tracking-wide flex items-center gap-1">
+                          <Shield size={12} fill="currentColor"/> 島主專用：行程管理
+                      </h4>
+                      <div className="bg-[#E76F51]/5 p-4 rounded-xl border border-[#E76F51]/20">
+                          <p className="text-xs text-[#8C7B65] mb-3 leading-relaxed">
+                              這趟旅程結束了嗎？您可以開啟新旅程。
+                              <br/>
+                              <span className="text-[#E76F51] font-bold">注意</span>：將清除所有裝備、食材與帳單 (保留成員與設定)。
+                              如需備份舊資料，請先至 Google Sheet 改名封存。
+                          </p>
+                          <button 
+                            onClick={onResetTrip}
+                            className="w-full bg-white border-2 border-[#E76F51] text-[#E76F51] py-3 rounded-xl font-bold hover:bg-[#E76F51] hover:text-white transition-all flex justify-center items-center gap-2 active:scale-95 shadow-sm"
+                          >
+                            <Trash2 size={16} /> 開啟新旅程 (重置資料)
+                          </button>
+                      </div>
+                  </div>
+              )}
+            </div>
+          )}
+
+          {activeTab === 'members' && (
+            <>
+              {isAdmin && (
+                <div className="flex gap-2 mb-4">
+                  <input 
+                    type="text" 
+                    value={newMemberName}
+                    onChange={(e) => setNewMemberName(e.target.value)}
+                    placeholder="輸入新成員名字"
+                    className="flex-1 bg-[#F9F7F2] border-2 border-[#E0D8C0] rounded-full px-4 py-2 text-sm focus:outline-none focus:border-[#7BC64F] text-[#5D4632]"
+                    onKeyDown={(e) => e.key === 'Enter' && handleAddMember()}
+                  />
+                  <button 
+                    onClick={handleAddMember}
+                    className="bg-[#7BC64F] text-white p-2.5 rounded-full hover:bg-[#5da135] shadow-sm flex-shrink-0 active:scale-95"
+                  >
+                    <UserPlus size={20} />
+                  </button>
+                </div>
+              )}
+
+              <div className="space-y-2">
+                {members.map(member => (
+                  <div key={member.id} className="flex items-center justify-between p-3 bg-white border border-[#E0D8C0] rounded-2xl group">
+                    <div className="flex items-center gap-3">
+                      <button 
+                         onClick={() => {
+                             if(isAdmin) setPickingAvatarForId(member.id);
+                         }}
+                         className={`w-10 h-10 bg-[#E9F5D8] rounded-full flex items-center justify-center border-2 border-[#7BC64F] text-xl transition-transform active:scale-90 relative overflow-hidden ${isAdmin ? 'hover:scale-105 cursor-pointer' : 'cursor-default'}`}
+                         title={isAdmin ? "點擊更換頭像" : ""}
+                      >
+                        {member.avatar}
+                        {isAdmin && <div className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 hover:opacity-100"><Edit2 size={14} className="text-white"/></div>}
+                      </button>
+                      <span className="font-bold text-[#5D4632]">{member.name}</span>
+                      {member.id === currentUser.id && (
+                        <span className="text-[10px] bg-[#E0D8C0] text-[#5D4632] px-2 py-0.5 rounded-full">我自己</span>
+                      )}
+                    </div>
+                    {isAdmin && member.id !== currentUser.id && (
+                      <button 
+                        onClick={() => handleRemoveMember(member.id)}
+                        className="text-[#E0D8C0] hover:text-[#E76F51] p-2 rounded-full hover:bg-[#E76F51]/10 transition-colors"
+                      >
+                        <UserMinus size={18} />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+              
+              {!isAdmin ? (
+                  <div className="text-center text-xs text-[#8C7B65] py-4 bg-[#F9F7F2] rounded-xl mt-4 border border-[#E0D8C0]">
+                      如需新增成員或修改頭像，請登入島主權限。
+                  </div>
+              ) : (
+                  <div className="text-center text-xs text-[#8C7B65] mt-4 opacity-70">
+                      點擊頭像即可更換圖示 🐻
+                  </div>
+              )}
+            </>
+          )}
+
+          {activeTab === 'system' && (
+            <div className="space-y-6">
+               <div className="bg-[#F2CC8F]/30 p-3 rounded-xl border border-[#F2CC8F] text-xs text-[#5D4632] leading-relaxed">
+                 <strong className="block mb-1 text-[#E76F51] flex items-center gap-1">
+                    <AlertTriangle size={14}/> 重要
+                 </strong>
+                 資料儲存在您的 Google 試算表 (免費/隱私)。設定存於此裝置，若未填寫 Key，僅 AI 功能無法使用，其他功能皆正常。
+               </div>
+
+               {/* --- API Key Section --- */}
+               <div className="space-y-2">
+                <label className="block text-xs font-bold text-[#8C7B65] flex items-center gap-1">
+                  <Key size={14}/> Gemini API Key (AI 功能)
+                </label>
+                <input 
+                  type="password" 
+                  value={apiKey}
+                  onChange={(e) => setApiKey(e.target.value)}
+                  placeholder="輸入 AI Studio Key (可留空)"
+                  className="w-full bg-[#F9F7F2] border-2 border-[#E0D8C0] rounded-xl px-3 py-2 text-sm text-[#5D4632] focus:outline-none focus:border-[#7BC64F]"
+                />
+                
+                {/* Gemini Tutorial */}
+                <div className="bg-white rounded-xl border border-[#E0D8C0] overflow-hidden">
+                   <button 
+                      onClick={() => setShowGeminiHelp(!showGeminiHelp)}
+                      className="w-full flex items-center justify-between p-3 text-xs font-bold text-[#2A9D8F] bg-[#E0D8C0]/10 hover:bg-[#E0D8C0]/30 transition-colors"
+                   >
+                      <span className="flex items-center gap-2"><HelpCircle size={14}/> 狸克教學：如何取得 Key?</span>
+                      {showGeminiHelp ? <ChevronUp size={14}/> : <ChevronDown size={14}/>}
+                   </button>
+                   
+                   {showGeminiHelp && (
+                     <div className="p-4 text-xs text-[#5D4632] space-y-3 bg-white">
+                        <ol className="list-decimal pl-4 space-y-1">
+                           <li>前往 <a href="https://aistudio.google.com/app/apikey" target="_blank" className="text-[#2A9D8F] underline font-bold flex inline-flex items-center">Google AI Studio <ExternalLink size={10} className="ml-0.5"/></a></li>
+                           <li>登入您的 Google 帳號。</li>
+                           <li>點擊 <strong>"Create API Key"</strong> 按鈕。</li>
+                           <li>複製生成的 Key 並貼到上方欄位。</li>
+                        </ol>
+                     </div>
+                   )}
+                </div>
+              </div>
+
+              {/* --- GAS URL Section --- */}
+              <div className="space-y-2">
+                <label className="block text-xs font-bold text-[#8C7B65] flex items-center gap-1">
+                  <Database size={14}/> GAS Web App URL (雲端同步)
+                </label>
+                <input 
+                  type="text" 
+                  value={gasUrl}
+                  onChange={(e) => setGasUrlState(e.target.value)}
+                  placeholder="https://script.google.com/..."
+                  className="w-full bg-[#F9F7F2] border-2 border-[#E0D8C0] rounded-xl px-3 py-2 text-sm text-[#5D4632] focus:outline-none focus:border-[#7BC64F]"
+                />
+
+                {/* GAS Tutorial */}
+                <div className="bg-white rounded-xl border border-[#E0D8C0] overflow-hidden">
+                   <button 
+                      onClick={() => setShowGasHelp(!showGasHelp)}
+                      className="w-full flex items-center justify-between p-3 text-xs font-bold text-[#2A9D8F] bg-[#E0D8C0]/10 hover:bg-[#E0D8C0]/30 transition-colors"
+                   >
+                      <span className="flex items-center gap-2"><HelpCircle size={14}/> 狸克教學：如何建立資料庫?</span>
+                      {showGasHelp ? <ChevronUp size={14}/> : <ChevronDown size={14}/>}
+                   </button>
+                   
+                   {showGasHelp && (
+                     <div className="p-4 text-xs text-[#5D4632] space-y-4 bg-white">
+                        {/* Step 1: Code */}
+                        <div>
+                           <div className="font-bold mb-1 text-[#E76F51]">步驟 1：複製後端程式碼</div>
+                           <button 
+                              onClick={handleCopyCode}
+                              className="w-full flex items-center justify-center gap-2 bg-[#5D4632] text-[#F2CC8F] py-2 rounded-lg font-bold hover:bg-[#4a3828] active:scale-95 transition-all mb-1"
+                           >
+                              {copyStatus ? <CheckCircle size={14} /> : <Copy size={14} />}
+                              {copyStatus || '點此複製 GAS 程式碼'}
+                           </button>
+                        </div>
+
+                        {/* Step 2: Create Sheet */}
+                        <div>
+                           <div className="font-bold mb-1 text-[#E76F51]">步驟 2：建立 Google Sheet</div>
+                           <ol className="list-decimal pl-4 space-y-1">
+                              <li>新增一個 <a href="https://sheets.new" target="_blank" className="text-[#2A9D8F] underline">Google 試算表</a>。</li>
+                              <li>點擊上方選單 <strong>擴充功能 (Extensions)</strong> &gt; <strong>Apps Script</strong>。</li>
+                              <li>清空編輯器內容，<strong>貼上</strong>剛剛複製的程式碼。</li>
+                              <li>按磁片圖示存檔。</li>
+                           </ol>
+                        </div>
+
+                        {/* Step 3: Deploy */}
+                        <div>
+                           <div className="font-bold mb-1 text-[#E76F51]">步驟 3：部署 (最重要！)</div>
+                           <ol className="list-decimal pl-4 space-y-1">
+                              <li>點擊右上角 <strong>部署 (Deploy)</strong> &gt; <strong>新增部署</strong>。</li>
+                              <li>點擊左側齒輪 &gt; 選擇 <strong>網頁應用程式 (Web app)</strong>。</li>
+                              <li>說明：隨意填 (例如 V1)。</li>
+                              <li>執行身分：<strong>我 (Me)</strong>。</li>
+                              <li className="text-[#E76F51] font-bold">誰可以存取：所有人 (Anyone) <span className="text-[10px] font-normal text-[#5D4632]">(這步做錯會無法同步)</span></li>
+                              <li>點擊部署，授予權限。</li>
+                              <li>複製 <strong>網頁應用程式網址 (Web App URL)</strong> 貼回這裡。</li>
+                           </ol>
+                        </div>
+                     </div>
+                   )}
+                </div>
+              </div>
+
+              <button 
+                  onClick={handleSaveSystemConfig}
+                  className="w-full bg-[#F4A261] text-white py-3 rounded-xl font-bold shadow-md hover:bg-[#E76F51] active:scale-95 transition-all flex justify-center items-center gap-2 mt-2"
+              >
+                  {saveStatus ? <CheckCircle size={18} /> : <Save size={18} />}
+                  {saveStatus || '儲存系統設定'}
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default SettingsModal;
