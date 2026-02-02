@@ -5,6 +5,7 @@ export interface User {
   name: string;
   avatar: string;
   isAdmin?: boolean;
+  headcount?: number; // New: Number of people this user represents (default 1)
 }
 
 export interface TripInfo {
@@ -12,11 +13,12 @@ export interface TripInfo {
   date: string;
   location: string;
   weather: {
-    temp: string;
+    temp: string; // Can be a single val "25" or range "18-25"
     cond: string;
-    icon: LucideIcon;
+    advice?: string; // New: Weather advice
   };
-  albumUrl?: string; // New: Link to external album
+  weatherUrl?: string; // New: Custom URL for weather forecast
+  albumUrl?: string; 
 }
 
 export interface GearItem {
@@ -61,7 +63,7 @@ export interface CheckItem {
 export interface MealPlan {
   id: number;
   dayLabel: string; // e.g. "第一天", "Day 1"
-  mealType: 'breakfast' | 'lunch' | 'dinner';
+  mealType: 'breakfast' | 'lunch' | 'dinner' | 'snack'; // Added 'snack'
   title: string;
   menuName: string;
   reason: string;

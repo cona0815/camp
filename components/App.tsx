@@ -9,10 +9,8 @@ import {
   MapPin, 
   Shield, 
   Settings,
-  Shirt,
   LogOut,
   RefreshCw,
-  CloudOff,
   Backpack,
   Image as ImageIcon,
   CloudRain,
@@ -20,8 +18,7 @@ import {
   Cloud,
   Snowflake,
   Wind,
-  AlertTriangle,
-  XCircle
+  AlertTriangle
 } from 'lucide-react';
 import { 
   INITIAL_GEAR, 
@@ -35,7 +32,7 @@ import { fetchFromCloud, saveToCloud, getGasUrl, AppData, archiveTrip } from './
 
 // Components
 import LoginScreen from './components/LoginScreen';
-import SetupScreen from './components/SetupScreen'; // Import SetupScreen
+import SetupScreen from './components/SetupScreen'; 
 import GearSection from './components/GearSection';
 import KitchenSection from './components/KitchenSection';
 import MenuSection from './components/MenuSection';
@@ -65,8 +62,7 @@ export default function App() {
 
   // System State
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
-  const [showWeatherGuide, setShowWeatherGuide] = useState(false);
-  const [isLoading, setIsLoading] = useState(false); // Changed default to false, will be set true in loadData
+  const [isLoading, setIsLoading] = useState(false); 
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncError, setSyncError] = useState(false);
   
@@ -80,8 +76,6 @@ export default function App() {
       const gasUrl = getGasUrl();
       
       if (!gasUrl) {
-        // No DB configured, use defaults. 
-        // NOTE: INITIAL_MEMBERS already includes Admin, so new users are fine.
         setIsLoading(false);
         return;
       }
@@ -94,16 +88,11 @@ export default function App() {
           setMealPlans(cloudData.mealPlans || []);
           setBills(cloudData.bills || []);
           
-          // --- MIGRATION LOGIC: Ensure Admin Exists & Permissions ---
           let loadedMembers = cloudData.members || [];
-          
-          // 1. Force Admin Permissions for 'admin_tanuki'
-          // This fixes the issue where old cloud data without 'isAdmin: true' strips admin rights
           loadedMembers = loadedMembers.map(m => 
              m.id === 'admin_tanuki' ? { ...m, isAdmin: true } : m
           );
 
-          // 2. Inject Admin if missing entirely (legacy migration)
           const hasAdmin = loadedMembers.some(m => m.id === 'admin_tanuki');
           if (!hasAdmin) {
               const defaultAdmin = INITIAL_MEMBERS.find(m => m.isAdmin);
@@ -113,11 +102,8 @@ export default function App() {
           }
           
           setMembers(loadedMembers);
-          // ---------------------------------------------
           
-          // Merge trip info carefully to default if missing (and strip potential garbage)
           const mergedTripInfo = { ...DEFAULT_TRIP_INFO, ...cloudData.tripInfo };
-          // Ensure we don't have legacy icon data causing issues (though types say it shouldn't exist)
           if ('icon' in mergedTripInfo.weather) {
              delete (mergedTripInfo.weather as any).icon;
           }
@@ -126,8 +112,6 @@ export default function App() {
           setCheckedDeparture(cloudData.checkedDeparture || {});
           setCheckedReturn(cloudData.checkedReturn || {});
         } else {
-          // *** CRITICAL FIX FOR NEW DB ***
-          // If cloudData is null (empty DB), we MUST reset to defaults to clear old data
           console.log("Empty DB detected. Resetting to defaults.");
           setGearList(INITIAL_GEAR);
           setIngredients(INITIAL_INGREDIENTS);
@@ -142,7 +126,6 @@ export default function App() {
       } catch (e) {
         console.error("Load Failed", e);
         setSyncError(true);
-        // Error is alerted in fetchFromCloud usually, or handled here silently to show Offline badge
       } finally {
         setIsLoading(false);
       }
@@ -150,13 +133,12 @@ export default function App() {
 
   // 1. Initial Load Logic
   useEffect(() => {
-    // Only load data if we are NOT in setup mode
     if (!isSetupRequired) {
         loadData();
     }
   }, [isSetupRequired]);
 
-  // Effect: When settings modal closes, retry connection if we were offline or just to be safe
+  // Effect: When settings modal closes, retry connection
   useEffect(() => {
       if (!isSettingsModalOpen && getGasUrl()) {
           loadData();
@@ -167,7 +149,6 @@ export default function App() {
   const handleManualSave = async () => {
     if (!getGasUrl()) return;
 
-    // Clear any pending auto-save to avoid double saves
     if (saveTimeoutRef.current) {
       clearTimeout(saveTimeoutRef.current);
     }
@@ -191,7 +172,7 @@ export default function App() {
     } catch (e) {
       console.error("Manual Save Failed", e);
       setSyncError(true);
-      throw e; // Re-throw to let the caller (modal) know it failed
+      throw e;
     } finally {
       setIsSyncing(false);
     }
@@ -199,7 +180,7 @@ export default function App() {
 
   // 2. Auto Save Effect
   useEffect(() => {
-    if (isSetupRequired) return; // Don't save if setting up
+    if (isSetupRequired) return;
     if (isFirstLoad.current || isLoading) {
       isFirstLoad.current = false;
       return;
@@ -209,7 +190,6 @@ export default function App() {
       clearTimeout(saveTimeoutRef.current);
     }
 
-    // Debounce save reduced to 1000ms for faster sync perception
     saveTimeoutRef.current = setTimeout(async () => {
       if (!getGasUrl()) return;
       
@@ -242,17 +222,6 @@ export default function App() {
     };
   }, [gearList, ingredients, mealPlans, bills, members, tripInfo, checkedDeparture, checkedReturn, isSetupRequired]);
 
-
-  // Helper Logic
-  const getWeatherAdvice = (tempStr: string) => {
-    const temp = parseInt(tempStr);
-    if (isNaN(temp)) return "請根據當地天氣預報穿著。";
-    if (temp < 10) return "寒流警報！請準備發熱衣、羽絨外套、毛帽與暖暖包。洋蔥式穿法最保暖。";
-    if (temp < 18) return "稍有涼意，建議穿著長袖、薄外套或背心。早晚溫差大，注意保暖。";
-    if (temp < 25) return "舒適的氣溫！短袖搭配薄外套即可，活動方便為主。";
-    return "天氣炎熱，請穿著透氣排汗的短袖衣物，並注意防曬與補充水分。";
-  };
-
   // Dynamic Weather Icon based on condition string
   const getWeatherIcon = (cond: string) => {
       if (cond.includes('雨')) return <CloudRain size={12} />;
@@ -261,24 +230,12 @@ export default function App() {
       if (cond.includes('雪')) return <Snowflake size={12} />;
       return <Wind size={12} />;
   };
-  
-  // Large version for modal
-  const getWeatherIconLarge = (cond: string) => {
-      if (cond.includes('雨')) return <CloudRain size={48} />;
-      if (cond.includes('晴')) return <Sun size={48} />;
-      if (cond.includes('雲') || cond.includes('陰')) return <Cloud size={48} />;
-      if (cond.includes('雪')) return <Snowflake size={48} />;
-      return <Wind size={48} />;
-  };
 
   const calculateProgress = () => {
     if (!currentUser) return 0;
 
-    // Items assigned to me (Public)
     const myPublicGear = gearList.filter(g => g.category === 'public' && g.owner?.id === currentUser.id);
-    // Personal Gear (Everyone has these)
     const myPersonalGear = gearList.filter(g => g.category === 'personal');
-    // Ingredients assigned to me
     const myIngredients = ingredients.filter(item => item.owner.id === currentUser.id);
 
     const total = myPublicGear.length + myPersonalGear.length + myIngredients.length;
@@ -294,8 +251,13 @@ export default function App() {
   };
 
   const handleLocationClick = () => {
-    // FIXED: Added '$' for string interpolation and corrected the URL structure
     window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(tripInfo.location)}`, '_blank');
+  };
+
+  // NEW: Open Weather URL directly
+  const handleWeatherClick = () => {
+    const url = tripInfo.weatherUrl || "https://www.cwa.gov.tw";
+    window.open(url, '_blank');
   };
 
   const handleAlbumTabClick = () => {
@@ -307,12 +269,10 @@ export default function App() {
   };
 
   const handleLogout = () => {
-    // 快速切換，不跳出確認視窗
     setCurrentUser(null);
     setActiveTab('gear');
   };
 
-  // 升級為島主 (Admin)
   const handleEnableAdmin = () => {
       if (currentUser) {
           setCurrentUser({ ...currentUser, isAdmin: true });
@@ -320,7 +280,6 @@ export default function App() {
       }
   };
 
-  // 1. 完全封存並重置 (New Trip)
   const handleResetTrip = async () => {
     if (!window.confirm("確定要將目前的旅程封存並開啟新旅程嗎？\n\n系統將會：\n1. 將目前的 Google Sheet 分頁改名封存\n2. 建立全新的 DB 分頁\n3. 徹底清空所有資料 (包含裝備、食材、帳單)")) {
       return;
@@ -330,13 +289,11 @@ export default function App() {
 
     try {
         if (getGasUrl()) {
-             // 1. Archive Cloud Data
              const safeTitle = tripInfo.title.replace(/[\\\/:*?"<>|]/g, "_");
              const archiveName = `Backup_${tripInfo.date.replace(/\//g, '-')}_${safeTitle}`;
              await archiveTrip(archiveName);
         }
 
-        // 2. Reset Local State - COMPLETELY WIPE
         setGearList(INITIAL_GEAR); 
         setIngredients(INITIAL_INGREDIENTS);
         setMealPlans([]);
@@ -345,10 +302,9 @@ export default function App() {
         setCheckedDeparture({});
         setCheckedReturn({});
         
-        // 3. Save new empty state to the NEW 'DB' sheet
         if (getGasUrl()) {
             const dataToSave: AppData = {
-                gearList: INITIAL_GEAR, // Send empty list
+                gearList: INITIAL_GEAR, 
                 ingredients: INITIAL_INGREDIENTS,
                 mealPlans: [],
                 bills: INITIAL_BILLS,
@@ -372,64 +328,14 @@ export default function App() {
     }
   };
 
-  // 2. 清空目前資料 (Delete Simulated Data) - NO ARCHIVE
-  const handleClearCurrentTrip = async () => {
-    if (!window.confirm("⚠️ 危險操作！\n\n確定要「清空」目前的所有資料嗎？\n(包含裝備、食材、菜單、帳單)\n\n此操作「不會」封存備份，資料將直接消失！\n\n(通常用於刪除模擬測試資料)")) {
-      return;
-    }
-
-    setIsSyncing(true);
-    try {
-        // Reset Local State
-        setGearList(INITIAL_GEAR); 
-        setIngredients(INITIAL_INGREDIENTS);
-        setMealPlans([]);
-        setBills(INITIAL_BILLS);
-        setTripInfo(prev => ({...DEFAULT_TRIP_INFO, albumUrl: prev.albumUrl})); 
-        setCheckedDeparture({});
-        setCheckedReturn({});
-
-        // Force Save Empty State to Current DB
-        if (getGasUrl()) {
-            const dataToSave: AppData = {
-                gearList: INITIAL_GEAR, 
-                ingredients: INITIAL_INGREDIENTS,
-                mealPlans: [],
-                bills: INITIAL_BILLS,
-                members: members,
-                tripInfo: { ...DEFAULT_TRIP_INFO, albumUrl: tripInfo.albumUrl },
-                checkedDeparture: {},
-                checkedReturn: {},
-                lastUpdated: Date.now()
-            };
-            await saveToCloud(dataToSave);
-            alert("已清空所有資料！(模擬資料已移除)");
-        } else {
-            alert("已清空本地資料。");
-        }
-    } catch (e) {
-        console.error(e);
-        alert("清空資料失敗，請檢查網路。");
-    } finally {
-        setIsSyncing(false);
-        setIsSettingsModalOpen(false);
-    }
-  };
-
   const handleSetupComplete = () => {
       setIsSetupRequired(false);
-      // Trigger load data immediately
-      // loadData will be called by useEffect since isSetupRequired changes to false
   };
 
-  // --- Render Conditions ---
-
-  // 1. Force Setup Screen if no URL
   if (isSetupRequired) {
       return <SetupScreen onComplete={handleSetupComplete} />;
   }
 
-  // 2. Loading State (Fetching initial data)
   if (isLoading) {
     return (
       <div className="min-h-screen bg-[#E9F5D8] flex items-center justify-center flex-col gap-4">
@@ -439,7 +345,6 @@ export default function App() {
     );
   }
 
-  // 3. Login Screen
   if (!currentUser) {
     return (
       <LoginScreen 
@@ -449,12 +354,10 @@ export default function App() {
     );
   }
 
-  // 4. Main App
   const progress = calculateProgress();
 
   return (
     <div className="min-h-screen bg-[#E9F5D8] font-sans text-[#5D4632] pb-24">
-      {/* Sync Error Banner - CRITICAL FOR DEBUGGING */}
       {syncError && (
           <div className="bg-[#E76F51] text-white p-3 text-center text-xs font-bold flex items-center justify-center gap-2 animate-pulse sticky top-0 z-50">
               <AlertTriangle size={16} />
@@ -464,7 +367,6 @@ export default function App() {
 
       {/* Header */}
       <div className="bg-[#7BC64F] text-white p-6 pb-12 shadow-sm relative overflow-hidden rounded-b-[40px]">
-        {/* ... (Header Content Same as Before) ... */}
         <div className="relative z-10 w-full max-w-lg md:max-w-3xl mx-auto">
           <div className="flex justify-between items-start mb-4">
             <div className="flex items-center gap-2">
@@ -472,7 +374,6 @@ export default function App() {
                 {tripInfo.date}
               </div>
               
-              {/* Sync Status Indicator */}
               {isSyncing && (
                  <span className="text-xs text-[#F2CC8F] animate-pulse flex items-center gap-1">
                    <RefreshCw size={12} className="animate-spin" /> 同步中
@@ -480,7 +381,6 @@ export default function App() {
               )}
             </div>
             
-            {/* 成員頭像與編輯按鈕 */}
             <div className="flex items-center gap-3">
               <div className="flex items-center -space-x-2">
                 {members.slice(0, 4).map((m, i) => {
@@ -540,16 +440,16 @@ export default function App() {
             </button>
             
             <button 
-              onClick={() => setShowWeatherGuide(true)}
+              onClick={handleWeatherClick}
               className="flex-shrink-0 flex items-center gap-1 hover:text-[#F2CC8F] transition-colors active:scale-95 bg-white/10 px-2.5 py-1 rounded-full backdrop-blur-sm hover:bg-white/20"
-              title="點擊查看穿著建議"
+              title="點擊開啟天氣預報"
             >
               <span className="flex items-center gap-1">
                  {getWeatherIcon(tripInfo.weather.cond)} {tripInfo.weather.temp}
               </span>
             </button>
 
-            {/* Readiness Badge - Moved here as requested */}
+            {/* Readiness Badge */}
             <button 
                 onClick={() => setActiveTab('check')}
                 className={`flex-shrink-0 flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold shadow-sm transition-all active:scale-95 backdrop-blur-sm ${
@@ -685,7 +585,6 @@ export default function App() {
           />
         )}
         
-        {/* Album Section acts as fallback placeholder if URL not set */}
         {activeTab === 'album' && (
            <AlbumSection 
              tripInfo={tripInfo} 
@@ -712,40 +611,9 @@ export default function App() {
         onEnableAdmin={handleEnableAdmin}
         onManualSave={handleManualSave}
         onRefreshData={loadData}
-        // Force casting to pass the new prop if TS complains (since we updated SettingsModal interface but context might lag)
-        // Actually, SettingsModal interface WAS updated in this response, so this is valid.
-        // We cast handleClearCurrentTrip to any just in case, but strict typing should work if everything is synced.
-        {...{ onClearCurrentTrip: handleClearCurrentTrip } as any}
       />
 
-      {/* Weather Guide Modal */}
-      {showWeatherGuide && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in" onClick={() => setShowWeatherGuide(false)}>
-          <div className="bg-[#FFFEF5] w-full max-w-sm rounded-3xl shadow-xl overflow-hidden border-4 border-[#E0D8C0]" onClick={e => e.stopPropagation()}>
-            <div className="bg-[#8ECAE6] p-4 flex justify-between items-center text-[#5D4632]">
-              <h3 className="font-bold text-lg flex items-center gap-2">
-                <Shirt size={20} /> 狸克氣象台建議
-              </h3>
-              <button onClick={() => setShowWeatherGuide(false)} className="p-1 hover:bg-white/20 rounded-full transition-colors">
-                <Settings size={0} className="hidden" />
-                <div className="font-bold text-xl px-2">✕</div>
-              </button>
-            </div>
-            <div className="p-6 text-center">
-              <div className="flex justify-center mb-4 text-[#F4A261]">
-                {getWeatherIconLarge(tripInfo.weather.cond)}
-              </div>
-              <div className="text-3xl font-bold text-[#5D4632] mb-2">{tripInfo.weather.temp}</div>
-              <div className="text-[#8C7B65] font-bold mb-4">{tripInfo.weather.cond}</div>
-              <div className="bg-[#E9F5D8] p-4 rounded-2xl text-[#5D4632] text-sm leading-relaxed border border-[#7BC64F]/30">
-                {getWeatherAdvice(tripInfo.weather.temp)}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Footer Info - Updated for Quick Switch */}
+      {/* Footer Info */}
       <div className="text-center mt-8 pb-10 text-xs text-[#8C7B65] font-bold flex flex-col items-center gap-3">
         <span className="opacity-80">目前登入: {currentUser.name} {currentUser.avatar}</span>
         <button 

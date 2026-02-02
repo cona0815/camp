@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { CarFront, Home, ClipboardList, Tent, Package, Check, Printer, Backpack } from 'lucide-react';
+import { CarFront, Home, ClipboardList, Tent, Package, Check, Printer, Backpack, Coffee, Sun, Moon, Clock, IceCream } from 'lucide-react';
 import { GearItem, Ingredient, User, MealPlan } from '../types';
 import { TRIP_INFO } from '../constants';
 
@@ -73,6 +73,24 @@ const SelfCheckSection: React.FC<SelfCheckSectionProps> = ({
     return Math.round((checkedCount / total) * 100);
   };
 
+  const getMealLabel = (type: string) => {
+      if (type === 'breakfast') return '早餐';
+      if (type === 'lunch') return '午餐';
+      if (type === 'dinner') return '晚餐';
+      if (type === 'snack') return '點心';
+      return '餐點';
+  };
+
+  const getMealColor = (type: string) => {
+      switch(type) {
+        case 'breakfast': return 'bg-[#F4A261] text-white';
+        case 'lunch': return 'bg-[#F2CC8F] text-[#5D4632]';
+        case 'dinner': return 'bg-[#2A9D8F] text-white';
+        case 'snack': return 'bg-[#E76F51] text-white';
+        default: return 'bg-[#E0D8C0] text-[#5D4632]';
+      }
+  };
+
   const progress = calculateProgress();
   const isDeparture = mode === 'departure';
 
@@ -87,13 +105,6 @@ const SelfCheckSection: React.FC<SelfCheckSectionProps> = ({
         const order: Record<string, number> = { breakfast: 1, lunch: 2, dinner: 3 };
         return (order[a.mealType] || 4) - (order[b.mealType] || 4);
     });
-
-    const getMealLabel = (type: string) => {
-        if (type === 'breakfast') return '早餐';
-        if (type === 'lunch') return '午餐';
-        if (type === 'dinner') return '晚餐';
-        return '餐點';
-    };
 
     const htmlContent = `
       <!DOCTYPE html>
@@ -405,7 +416,10 @@ const SelfCheckSection: React.FC<SelfCheckSectionProps> = ({
           </h4>
         </div>
         <div className="divide-y divide-[#E0D8C0]">
-          {myIngredients.length > 0 ? myIngredients.map(item => (
+          {myIngredients.length > 0 ? myIngredients.map(item => {
+            const plan = mealPlans.find(p => String(p.id) === String(item.usedInPlanId));
+            
+            return (
             <div 
               key={`food-${item.id}`} 
               onClick={() => toggleCheck(`food-${item.id}`)}
@@ -422,12 +436,19 @@ const SelfCheckSection: React.FC<SelfCheckSectionProps> = ({
                 <div className={`font-bold text-base ${checkedItems[`food-${item.id}`] ? 'text-[#8C7B65] line-through' : 'text-[#5D4632]'}`}>
                   {item.name}
                 </div>
-                <span className="text-[10px] bg-[#7BC64F]/20 text-[#5D4632] px-2 py-0.5 rounded-full">
-                  {isDeparture ? '食材庫提供' : '容器回收'}
-                </span>
+                <div className="flex items-center gap-2 flex-wrap mt-1">
+                    <span className="text-[10px] bg-[#7BC64F]/20 text-[#5D4632] px-2 py-0.5 rounded-full whitespace-nowrap">
+                        {isDeparture ? '食材庫提供' : '容器回收'}
+                    </span>
+                    {plan && (
+                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold whitespace-nowrap flex items-center gap-1 shadow-sm ${getMealColor(plan.mealType)}`}>
+                            {plan.dayLabel} {getMealLabel(plan.mealType)} {plan.menuName}
+                        </span>
+                    )}
+                </div>
               </div>
             </div>
-          )) : (
+          )}) : (
             <div className="p-8 text-center text-[#8C7B65] text-sm">
               您這次露營不用準備食材，等著吃就好！😋
             </div>

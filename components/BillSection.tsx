@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Calculator, Plus, ArrowRightLeft, Trash2, Wallet } from 'lucide-react';
+import { Calculator, Plus, ArrowRightLeft, Trash2, Wallet, Shield } from 'lucide-react';
 import { Bill, User } from '../types';
 
 interface BillSectionProps {
@@ -39,23 +39,33 @@ const BillSection: React.FC<BillSectionProps> = ({ bills, setBills, members, cur
     setAmount('');
   };
 
-  const handleDeleteBill = (id: number) => {
+  const handleDeleteBill = (id: number | string) => {
     if(window.confirm("確定刪除這筆帳目嗎？")) {
-      setBills(bills.filter(b => b.id !== id));
+      setBills(bills.filter(b => String(b.id) !== String(id)));
     }
   };
 
   const totalExpense = bills.reduce((sum, b) => sum + b.amount, 0);
-  const averageExpense = members.length > 0 ? Math.round(totalExpense / members.length) : 0;
+  
+  // Calculate weighted average
+  // Fix: Use conditional check to allow 0. If headcount is undefined, default to 1.
+  const totalHeadcount = members.reduce((sum, m) => {
+      const count = m.headcount !== undefined ? m.headcount : 1;
+      return sum + count;
+  }, 0);
+
+  const expensePerHead = totalHeadcount > 0 ? totalExpense / totalHeadcount : 0;
 
   const memberStatus = members.map(member => {
     const paid = bills
       .filter(b => b.payerId === member.id)
       .reduce((sum, b) => sum + b.amount, 0);
     
-    const balance = paid - averageExpense; 
+    const count = member.headcount !== undefined ? member.headcount : 1;
+    const shouldPay = expensePerHead * count;
+    const balance = paid - shouldPay; // Postive means receive money, Negative means pay money
 
-    return { ...member, paid, balance };
+    return { ...member, paid, balance, shouldPay, count };
   });
 
   return (
@@ -70,10 +80,10 @@ const BillSection: React.FC<BillSectionProps> = ({ bills, setBills, members, cur
             </h2>
           </div>
           <div className="text-right">
-            <p className="text-[#8C7B65] text-xs font-bold uppercase tracking-wide mb-1">每人平均</p>
+            <p className="text-[#8C7B65] text-xs font-bold uppercase tracking-wide mb-1">每人(單位)平均</p>
             <h2 className="text-xl font-bold flex items-center justify-end gap-1">
-              ${averageExpense.toLocaleString()}
-              <span className="text-xs font-normal opacity-70">/ {members.length}人</span>
+              ${Math.round(expensePerHead).toLocaleString()}
+              <span className="text-xs font-normal opacity-70">/ {totalHeadcount}單位</span>
             </h2>
           </div>
         </div>
@@ -83,28 +93,41 @@ const BillSection: React.FC<BillSectionProps> = ({ bills, setBills, members, cur
             <Calculator size={16} /> 鈴錢結算 (多退少補)
           </div>
           <div className="space-y-2">
-            {memberStatus.map(m => (
+            {memberStatus.map(m => {
+              // Only hide if count is 0 AND balance is 0. 
+              // If Admin paid in advance, they should see "Receive money" even if count is 0.
+              if (m.count === 0 && Math.abs(Math.round(m.balance)) === 0) return null;
+
+              return (
               <div key={m.id} className="flex justify-between items-center text-sm">
                 <div className="flex items-center gap-2">
                   <span className="text-lg">{m.avatar}</span>
-                  <span className="font-bold opacity-90">{m.name}</span>
+                  <div className="flex flex-col">
+                    <span className="font-bold opacity-90 leading-tight flex items-center gap-1">
+                        {m.name}
+                        {m.count === 0 && <Shield size={10} className="text-[#E76F51]"/>}
+                    </span>
+                    <span className="text-[10px] text-[#8C7B65] opacity-80">
+                         {m.count === 0 ? '(不參與分帳)' : (m.count > 1 ? `(x${m.count}人)` : '')}
+                    </span>
+                  </div>
                 </div>
                 
-                {m.balance > 0 ? (
+                {Math.round(m.balance) > 0 ? (
                   <div className="flex items-center gap-1 text-[#2A9D8F] font-bold bg-[#2A9D8F]/10 px-2 py-0.5 rounded-full">
                     <span className="text-xs font-normal">應收回</span>
-                    +${m.balance.toLocaleString()}
+                    +${Math.round(m.balance).toLocaleString()}
                   </div>
-                ) : m.balance < 0 ? (
+                ) : Math.round(m.balance) < 0 ? (
                   <div className="flex items-center gap-1 text-[#E76F51] font-bold bg-[#E76F51]/10 px-2 py-0.5 rounded-full">
                     <span className="text-xs font-normal">需支付</span>
-                    ${Math.abs(m.balance).toLocaleString()}
+                    ${Math.abs(Math.round(m.balance)).toLocaleString()}
                   </div>
                 ) : (
                   <div className="text-xs opacity-70 bg-white/50 px-2 py-0.5 rounded-full">收支平衡</div>
                 )}
               </div>
-            ))}
+            )})}
           </div>
         </div>
       </div>
