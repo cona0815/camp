@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Users, X, UserPlus, UserMinus, MapPin, Calendar, Type, Settings, Key, Database, Save, CheckCircle, HelpCircle, Copy, ExternalLink, ChevronDown, ChevronUp, AlertTriangle, Shield, Lock, Image as ImageIcon, ArrowRight, Edit2, Wifi, Minus, Plus, Loader2, CloudSun, Wallet } from 'lucide-react';
+import { Users, X, UserPlus, UserMinus, MapPin, Calendar, Type, Settings, Key, Database, Save, CheckCircle, HelpCircle, Copy, ExternalLink, ChevronDown, ChevronUp, AlertTriangle, Shield, Lock, Image as ImageIcon, ArrowRight, Edit2, Wifi, Minus, Plus, Loader2, Wallet } from 'lucide-react';
 import { User, TripInfo } from '../types';
 import { AVATAR_POOL } from '../constants';
 import { getGasUrl, setGasUrl, testConnection } from '../services/storage';
@@ -461,21 +461,6 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                   value={tripInfo.location}
                   onChange={(e) => handleChangeInfo('location', e.target.value)}
                   disabled={!isAdmin}
-                  className={`w-full bg-[#F9F7F2] border-2 border-[#E0D8C0] rounded-xl px-3 py-2 text-sm text-[#5D4632] ${!isAdmin ? 'opacity-70 cursor-not-allowed bg-[#E0D8C0]/20' : 'focus:outline-none focus:border-[#7BC64F]'}`}
-                />
-              </div>
-
-              {/* Weather URL Input - Replaced AI section */}
-              <div>
-                <label className="block text-xs font-bold text-[#8C7B65] mb-1 flex items-center gap-1">
-                  <CloudSun size={14}/> 天氣預報連結 (貼上 CWA 網址)
-                </label>
-                <input 
-                  type="text" 
-                  value={tripInfo.weatherUrl || ''}
-                  onChange={(e) => handleChangeInfo('weatherUrl', e.target.value)}
-                  disabled={!isAdmin}
-                  placeholder="https://www.cwa.gov.tw/..."
                   className={`w-full bg-[#F9F7F2] border-2 border-[#E0D8C0] rounded-xl px-3 py-2 text-sm text-[#5D4632] ${!isAdmin ? 'opacity-70 cursor-not-allowed bg-[#E0D8C0]/20' : 'focus:outline-none focus:border-[#7BC64F]'}`}
                 />
               </div>

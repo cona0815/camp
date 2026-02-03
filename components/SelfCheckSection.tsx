@@ -46,7 +46,8 @@ const SelfCheckSection: React.FC<SelfCheckSectionProps> = ({
 
   const personalGear = gearList.filter(item => item.category === 'personal');
    
-  const myIngredients = ingredients.filter(item => item.owner.id === currentUser.id);
+  // FIXED: Check for item.owner before accessing id to prevent crash on "Need to Buy" items
+  const myIngredients = ingredients.filter(item => item.owner && item.owner.id === currentUser.id);
    
   const toggleCheck = (id: string) => {
     setCheckedItems(prev => ({
@@ -61,14 +62,18 @@ const SelfCheckSection: React.FC<SelfCheckSectionProps> = ({
     const myPublicGear = publicGear.filter(g => g.owner?.id === currentUser.id);
     const myPersonalGear = personalGear; 
 
-    const total = myPublicGear.length + myPersonalGear.length + myIngredients.length;
+    // Re-filter here to be safe within the function scope, although component scope 'myIngredients' exists.
+    // Explicitly checking owner again for safety.
+    const myIngredientsList = ingredients.filter(item => item.owner && item.owner.id === currentUser.id);
+
+    const total = myPublicGear.length + myPersonalGear.length + myIngredientsList.length;
     if (total === 0) return 0;
 
     const checkedCount = [
         ...myPublicGear,
         ...myPersonalGear
     ].filter(item => checkedItems[`gear-${item.id}`]).length + 
-    myIngredients.filter(item => checkedItems[`food-${item.id}`]).length;
+    myIngredientsList.filter(item => checkedItems[`food-${item.id}`]).length;
 
     return Math.round((checkedCount / total) * 100);
   };
@@ -190,7 +195,8 @@ const SelfCheckSection: React.FC<SelfCheckSectionProps> = ({
                             // 1. Try to find source ingredient for accurate ID comparison
                             if (item.sourceIngredientId) {
                                 const sourceIng = ingredients.find(i => i.id === item.sourceIngredientId);
-                                if (sourceIng && sourceIng.owner.id !== currentUser.id) {
+                                // FIXED: Check for sourceIng.owner existence
+                                if (sourceIng && sourceIng.owner && sourceIng.owner.id !== currentUser.id) {
                                     isOthers = true;
                                 }
                             } else if (item.owner && item.owner.name !== currentUser.name) {

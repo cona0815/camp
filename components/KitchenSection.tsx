@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { 
-  Package, Lock, Check, Trash2, Plus, Users, Minus, Coffee, Sun, Moon, Clock, Sparkles, ChefHat, Camera, Loader2, Image as ImageIcon, X, Edit2, Soup, IceCream, Calendar
+  Package, Lock, Check, Trash2, Plus, Users, Minus, Coffee, Sun, Moon, Clock, Sparkles, ChefHat, Camera, Loader2, Image as ImageIcon, X, Edit2, Soup, IceCream, Calendar, ShoppingBag, ChevronDown, ChevronUp, Ban
 } from 'lucide-react';
 import { Ingredient, MealPlan, CheckItem, User } from '../types';
 import { generateCampMeal, identifyIngredientsFromImage, generateLeftoverRecipe } from '../services/geminiService';
@@ -22,7 +22,10 @@ const KitchenSection: React.FC<KitchenSectionProps> = ({ ingredients, setIngredi
   const [children, setChildren] = useState(2);
   const [status, setStatus] = useState<'idle' | 'loading' | 'analyzing' | 'rescuing'>('idle'); 
   
-  const [reassigningId, setReassigningId] = useState<string | null>(null);
+  const [assigningIngredientId, setAssigningIngredientId] = useState<string | null>(null);
+  
+  // State for grouping UI
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
 
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const galleryInputRef = useRef<HTMLInputElement>(null);
@@ -32,6 +35,7 @@ const KitchenSection: React.FC<KitchenSectionProps> = ({ ingredients, setIngredi
     const newItem: Ingredient = {
       id: Date.now(),
       name: newIngName,
+      quantity: '',
       selected: true, 
       usedInPlanId: null, 
       owner: { id: currentUser.id, name: currentUser.name, avatar: currentUser.avatar } 
@@ -49,28 +53,79 @@ const KitchenSection: React.FC<KitchenSectionProps> = ({ ingredients, setIngredi
     }));
   };
 
-  const handleReassign = (id: number | string, member: User) => {
+  const handleUpdateQuantity = (id: number | string, newQty: string) => {
+    setIngredients(prev => prev.map(ing => 
+      String(ing.id) === String(id) ? { ...ing, quantity: newQty } : ing
+    ));
+    
+    setMealPlans(prev => prev.map(plan => ({
+      ...plan,
+      checklist: plan.checklist.map(item => 
+        String(item.sourceIngredientId) === String(id) 
+          ? { ...item, quantity: newQty } 
+          : item
+      )
+    })));
+  };
+
+  const handleClaimIngredient = (id: number | string, assignedUser?: {id: string, name: string, avatar: string} | null) => {
     setIngredients(prev => prev.map(ing => {
-        if (String(ing.id) === String(id)) {
-            return { ...ing, owner: { id: member.id, name: member.name, avatar: member.avatar } };
+        if (String(ing.id) !== String(id)) return ing;
+        
+        let newOwner = ing.owner;
+
+        if (currentUser.isAdmin && assignedUser !== undefined) {
+             newOwner = assignedUser;
         }
-        return ing;
+        else if (currentUser.isAdmin) {
+             if (ing.owner) newOwner = null;
+             else newOwner = { id: currentUser.id, name: currentUser.name, avatar: currentUser.avatar };
+        } else {
+             if (ing.owner?.id === currentUser.id) newOwner = null;
+             else if (!ing.owner) newOwner = { id: currentUser.id, name: currentUser.name, avatar: currentUser.avatar };
+             else return ing;
+        }
+        
+        return { ...ing, owner: newOwner };
     }));
-    setReassigningId(null);
+
+    if (assignedUser !== undefined) setAssigningIngredientId(null);
+
+    setMealPlans(prevPlans => prevPlans.map(plan => ({
+        ...plan,
+        checklist: plan.checklist.map(item => {
+            if (String(item.sourceIngredientId) === String(id)) {
+                const currentIng = ingredients.find(i => String(i.id) === String(id));
+                if (!currentIng) return item;
+
+                let newOwner = item.owner;
+
+                if (currentUser.isAdmin && assignedUser !== undefined) {
+                     newOwner = assignedUser ? { name: assignedUser.name, avatar: assignedUser.avatar } : null;
+                } else if (currentUser.isAdmin) {
+                     if (item.owner) newOwner = null;
+                     else newOwner = { name: currentUser.name, avatar: currentUser.avatar };
+                } else {
+                     if (currentIng.owner?.id === currentUser.id) newOwner = null;
+                     else if (!currentIng.owner) newOwner = { name: currentUser.name, avatar: currentUser.avatar };
+                }
+                
+                return { ...item, owner: newOwner };
+            }
+            return item;
+        })
+    })));
   };
 
   const handleDeleteIngredient = (id: number | string) => {
      const target = ingredients.find(i => String(i.id) === String(id));
      if (!target) return;
 
-     // 1. Basic Check: Ownership
-     // Allow Admin or Owner to delete.
-     if (target.owner.id !== currentUser.id && !currentUser.isAdmin) {
+     if (target.owner && target.owner.id !== currentUser.id && !currentUser.isAdmin) {
        alert("您不能刪除別人提供的食材喔！");
        return;
      }
 
-     // 2. Used in plan -> Soft Confirmation (Unlock Restriction)
      let shouldDelete = true;
      if (target.usedInPlanId) {
          shouldDelete = window.confirm(`【${target.name}】目前被用於餐點中。\n確定要刪除嗎？(將從餐點清單中解除連結)`);
@@ -79,13 +134,12 @@ const KitchenSection: React.FC<KitchenSectionProps> = ({ ingredients, setIngredi
      if (shouldDelete) {
          setIngredients(ingredients.filter(i => String(i.id) !== String(id)));
          
-         // 3. Cleanup links in mealPlans if it was used
          if (target.usedInPlanId) {
              setMealPlans(prev => prev.map(p => ({
                ...p,
                checklist: p.checklist.map(c => 
                    String(c.sourceIngredientId) === String(id)
-                     ? { ...c, sourceIngredientId: null, owner: null, name: `${c.name}` } // Keep name (maybe remove "(冰箱)" tag visually later), remove link
+                     ? { ...c, sourceIngredientId: null, owner: null, name: `${c.name}` } 
                      : c
                )
            })));
@@ -94,6 +148,7 @@ const KitchenSection: React.FC<KitchenSectionProps> = ({ ingredients, setIngredi
   };
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    // ... (Keep existing implementation)
     const file = e.target.files?.[0];
     if (!file) return;
     setStatus('analyzing');
@@ -109,6 +164,7 @@ const KitchenSection: React.FC<KitchenSectionProps> = ({ ingredients, setIngredi
         const newIngredients: Ingredient[] = identifiedItems.map((name, index) => ({
           id: Date.now() + index,
           name: name,
+          quantity: '1',
           selected: true,
           usedInPlanId: null,
           owner: { id: currentUser.id, name: currentUser.name, avatar: currentUser.avatar }
@@ -117,9 +173,13 @@ const KitchenSection: React.FC<KitchenSectionProps> = ({ ingredients, setIngredi
       } else {
         alert("狸克看不太出來這張照片裡有什麼食材耶...😅");
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      alert("圖片辨識失敗，請檢查 API Key 或網路連線。");
+      if (error.message && error.message.includes('API Key')) {
+          alert("尚未設定 API Key！\n請點擊右上角設定 (齒輪) -> 系統 -> 輸入 Key。");
+      } else {
+          alert("圖片辨識失敗，請檢查網路連線。");
+      }
     } finally {
       setStatus('idle');
       if (cameraInputRef.current) cameraInputRef.current.value = '';
@@ -128,19 +188,14 @@ const KitchenSection: React.FC<KitchenSectionProps> = ({ ingredients, setIngredi
   };
 
   const handleGenerate = async () => {
+    // ... (Keep existing implementation)
     const selectedItems = ingredients.filter(i => i.selected);
-    if (selectedItems.length === 0) {
-      alert("請至少勾選一項食材！");
-      return;
-    }
-    
     setStatus('loading');
     try {
         const dayLabel = day === 0 ? '行程通用' : `第 ${day} 天`;
         const title = `${dayLabel} ${getMealLabel(mealType)}`;
         const selectedNames = selectedItems.map(i => i.name);
         
-        // AI now returns an Array of dishes
         const generatedDishes = await generateCampMeal(selectedNames, mealType === 'snack' ? 'snack/drink' : mealType, adults, children, title);
         
         if (generatedDishes.length === 0) {
@@ -150,74 +205,73 @@ const KitchenSection: React.FC<KitchenSectionProps> = ({ ingredients, setIngredi
 
         const newPlans: MealPlan[] = [];
         const timestamp = Date.now();
+        const newIngredientsToAdd: Ingredient[] = [];
         
-        // Logic to track which ingredients have been assigned to avoid double counting if possible
-        // But simplified: We map ingredients to the FIRST plan that needs them in the shopping list 'have' field, or simplistic name match
-        const ingredientMap = new Map<string, number>(); // Ingredient Name -> Ingredient ID
+        const ingredientMap = new Map<string, number>(); 
         selectedItems.forEach(ing => ingredientMap.set(ing.name, ing.id));
-
         const assignedIngredientIds = new Set<number>();
 
         generatedDishes.forEach((dish, index) => {
              const newPlanId = timestamp + index * 100;
+             const dishCheckItems: CheckItem[] = [];
              
-             // Identify which of the selected ingredients are used in this dish
-             // The AI shoppingList 'have' field usually lists what we have.
-             const inventoryCheckItems: CheckItem[] = [];
-             
-             dish.shoppingList.forEach(shopItem => {
-                 // Try to match with our selected inventory
-                 // Simple name check
+             dish.shoppingList.forEach((shopItem, itemIdx) => {
+                 let matchedIngId: number | null = null;
+                 let matchedOwner = null;
+                 let isFromInventory = false;
+                 let qty = shopItem.buy !== '0' ? shopItem.buy : (shopItem.need || '');
+
                  if (ingredientMap.has(shopItem.name) && !assignedIngredientIds.has(ingredientMap.get(shopItem.name)!)) {
-                      const ingId = ingredientMap.get(shopItem.name)!;
-                      const originalIng = selectedItems.find(i => i.id === ingId);
-                      if (originalIng) {
-                          inventoryCheckItems.push({
-                              id: `inv-${originalIng.id}`,
-                              name: originalIng.name,
-                              checked: false,
-                              owner: { name: originalIng.owner.name, avatar: originalIng.owner.avatar },
-                              sourceIngredientId: originalIng.id
-                          });
-                          assignedIngredientIds.add(ingId);
-                      }
+                      matchedIngId = ingredientMap.get(shopItem.name)!;
+                      const originalIng = selectedItems.find(i => i.id === matchedIngId);
+                      matchedOwner = originalIng?.owner || null;
+                      if(originalIng?.quantity) qty = originalIng.quantity; 
+                      isFromInventory = true;
                  } else {
-                     // Fuzzy match if needed, or check if 'have' > 0
-                     // For now, let's look for partial matches in selected items that aren't assigned
                      const partialMatch = selectedItems.find(i => 
                         !assignedIngredientIds.has(i.id) && 
                         (i.name.includes(shopItem.name) || shopItem.name.includes(i.name))
                      );
                      if (partialMatch) {
-                          inventoryCheckItems.push({
-                              id: `inv-${partialMatch.id}`,
-                              name: partialMatch.name,
-                              checked: false,
-                              owner: { name: partialMatch.owner.name, avatar: partialMatch.owner.avatar },
-                              sourceIngredientId: partialMatch.id
-                          });
-                          assignedIngredientIds.add(partialMatch.id);
+                          matchedIngId = partialMatch.id;
+                          matchedOwner = partialMatch.owner;
+                          if(partialMatch.quantity) qty = partialMatch.quantity;
+                          isFromInventory = true;
                      }
                  }
-             });
-             
-             // If any selected item was not matched but clearly intended for this batch,
-             // we might want to attach them to the first dish?
-             // Let's stick to strict matching to avoid clutter. 
-             // Unassigned items will remain selected in the UI if we don't clear them?
-             // Better: Clear ALL selected items from selection state, mark matched ones as used.
-             // If unmatched, they just unselect but don't link? 
-             // Logic below: We unselect all. If they aren't linked, they are free.
 
-             const buyCheckItems: CheckItem[] = dish.shoppingList
-                .filter(item => item.buy !== '0')
-                .map((item, idx) => ({
-                    id: `buy-${timestamp}-${index}-${idx}`,
-                    name: `${item.name} (需買: ${item.buy})`,
-                    checked: false,
-                    owner: null,
-                    sourceIngredientId: null
-                }));
+                 if (isFromInventory && matchedIngId) {
+                      assignedIngredientIds.add(matchedIngId);
+                      dishCheckItems.push({
+                          id: `check-${newPlanId}-${itemIdx}`,
+                          name: shopItem.name,
+                          quantity: qty,
+                          checked: false,
+                          owner: matchedOwner ? { name: matchedOwner.name, avatar: matchedOwner.avatar } : null,
+                          sourceIngredientId: matchedIngId
+                      });
+                 } else {
+                      const newIngId = timestamp + index * 1000 + itemIdx;
+                      
+                      newIngredientsToAdd.push({
+                          id: newIngId,
+                          name: shopItem.name,
+                          quantity: qty,
+                          selected: false,
+                          usedInPlanId: newPlanId,
+                          owner: null
+                      });
+
+                      dishCheckItems.push({
+                          id: `check-${newPlanId}-${itemIdx}`,
+                          name: shopItem.name,
+                          quantity: qty,
+                          checked: false,
+                          owner: null,
+                          sourceIngredientId: newIngId
+                      });
+                 }
+             });
 
              newPlans.push({
                 id: newPlanId,
@@ -226,51 +280,56 @@ const KitchenSection: React.FC<KitchenSectionProps> = ({ ingredients, setIngredi
                 title,
                 menuName: dish.menuName,
                 reason: dish.reason,
-                checklist: [...inventoryCheckItems, ...buyCheckItems],
+                checklist: dishCheckItems,
                 notes: "",
                 recipe: dish.recipe
             });
         });
 
-        // Add remaining selected ingredients to the FIRST plan if they weren't assigned (Fallback)
-        // This ensures nothing gets "lost" from the visual selection
-        const firstPlan = newPlans[0];
-        selectedItems.forEach(ing => {
-            if (!assignedIngredientIds.has(ing.id)) {
-                 firstPlan.checklist.unshift({
-                      id: `inv-${ing.id}`,
-                      name: ing.name,
-                      checked: false,
-                      owner: { name: ing.owner.name, avatar: ing.owner.avatar },
-                      sourceIngredientId: ing.id
-                 });
-                 assignedIngredientIds.add(ing.id);
-            }
+        if (newPlans.length > 0) {
+            const firstPlan = newPlans[0];
+            selectedItems.forEach(ing => {
+                if (!assignedIngredientIds.has(ing.id)) {
+                     firstPlan.checklist.unshift({
+                          id: `inv-${ing.id}`,
+                          name: ing.name,
+                          quantity: ing.quantity,
+                          checked: false,
+                          owner: { name: ing.owner.name, avatar: ing.owner.avatar },
+                          sourceIngredientId: ing.id
+                     });
+                     assignedIngredientIds.add(ing.id);
+                }
+            });
+        }
+
+        setMealPlans([...newPlans, ...mealPlans]); 
+        setIngredients(prev => {
+            const updatedExisting = prev.map(ing => {
+                if (assignedIngredientIds.has(ing.id)) {
+                    const planId = newPlans.find(p => p.checklist.some(c => c.sourceIngredientId === ing.id))?.id;
+                    return { ...ing, usedInPlanId: planId || null, selected: false };
+                }
+                if (ing.selected) return { ...ing, selected: false };
+                return ing;
+            });
+            return [...updatedExisting, ...newIngredientsToAdd];
         });
 
-        setMealPlans([...newPlans, ...mealPlans]); // Add new plans at top
-        
-        // Update Ingredients state
-        setIngredients(prev => prev.map(ing => {
-            if (assignedIngredientIds.has(ing.id)) {
-                // Find which plan it went to
-                const planId = newPlans.find(p => p.checklist.some(c => c.sourceIngredientId === ing.id))?.id;
-                return { ...ing, usedInPlanId: planId || null, selected: false };
-            }
-            // If it was selected but not used (shouldn't happen with fallback above), just unselect
-            if (ing.selected) return { ...ing, selected: false };
-            return ing;
-        }));
-
-    } catch (error) {
+    } catch (error: any) {
         console.error(error);
-        alert("狸克大廚去喝咖啡了，請稍後再試！(請確認是否設定 API_KEY)");
+        if (error.message && error.message.includes('API Key')) {
+            alert("尚未設定 API Key！\n請點擊右上角設定 (齒輪) -> 系統 -> 輸入 Key。");
+        } else {
+            alert("狸克大廚去喝咖啡了，請稍後再試！");
+        }
     } finally {
         setStatus('idle');
     }
   };
 
   const handleLeftoverRescue = async () => {
+    // ... (Keep existing implementation)
     const availableIngredients = ingredients.filter(i => i.usedInPlanId === null);
     if (availableIngredients.length === 0) {
         alert("目前冰箱是空的或所有食材都已分配，沒有剩食可以拯救喔！");
@@ -286,8 +345,9 @@ const KitchenSection: React.FC<KitchenSectionProps> = ({ ingredients, setIngredi
              usedInventoryItems.push({
                  id: `inv-${ing.id}`,
                  name: ing.name,
+                 quantity: ing.quantity,
                  checked: false,
-                 owner: { name: ing.owner.name, avatar: ing.owner.avatar },
+                 owner: ing.owner ? { name: ing.owner.name, avatar: ing.owner.avatar } : null,
                  sourceIngredientId: ing.id
              });
         });
@@ -306,9 +366,13 @@ const KitchenSection: React.FC<KitchenSectionProps> = ({ ingredients, setIngredi
         setIngredients(prev => prev.map(ing => 
             ing.usedInPlanId === null ? { ...ing, usedInPlanId: newPlanId } : ing
         ));
-    } catch (e) {
+    } catch (e: any) {
         console.error(e);
-        alert("AI 救援失敗，請檢查網路或稍後再試！");
+        if (e.message && e.message.includes('API Key')) {
+            alert("尚未設定 API Key！\n請點擊右上角設定 (齒輪) -> 系統 -> 輸入 Key。");
+        } else {
+            alert("AI 救援失敗，請檢查網路或稍後再試！");
+        }
     } finally {
         setStatus('idle');
     }
@@ -321,6 +385,10 @@ const KitchenSection: React.FC<KitchenSectionProps> = ({ ingredients, setIngredi
         String(ing.usedInPlanId) === String(planId) ? { ...ing, usedInPlanId: null } : ing
       ));
     }
+  };
+
+  const toggleGroupExpand = (groupKey: string) => {
+      setExpandedGroups(prev => ({...prev, [groupKey]: !prev[groupKey]}));
   };
 
   const getMealIcon = (type: string) => {
@@ -343,52 +411,161 @@ const KitchenSection: React.FC<KitchenSectionProps> = ({ ingredients, setIngredi
     }
   };
 
-  const getPlanName = (planId: number | null) => {
+  const getPlanContext = (planId: number | null) => {
     const plan = mealPlans.find(p => String(p.id) === String(planId));
-    return plan ? plan.menuName : '未知餐點';
+    if (!plan) return null;
+    return {
+        label: `${plan.dayLabel} ${getMealLabel(plan.mealType)}`,
+        menu: plan.menuName,
+        mealType: plan.mealType
+    };
   };
+
+  const sortedGroupKeys = Object.keys(expandedGroups).sort(); 
+
+  // Grouping Logic
+  const groupedPlans = mealPlans.reduce((acc, plan) => {
+      const key = `${plan.dayLabel}-${plan.mealType}`;
+      if (!acc[key]) {
+          acc[key] = {
+              dayLabel: plan.dayLabel,
+              mealType: plan.mealType,
+              plans: []
+          };
+      }
+      acc[key].plans.push(plan);
+      return acc;
+  }, {} as Record<string, { dayLabel: string, mealType: string, plans: MealPlan[] }>);
+
+  const sortedKeys = Object.keys(groupedPlans).sort();
+
+  // Progress Calculation
+  const totalIngredients = ingredients.length;
+  const claimedIngredients = ingredients.filter(i => !!i.owner).length;
+  const progressPercent = totalIngredients > 0 ? Math.round((claimedIngredients / totalIngredients) * 100) : 0;
 
   return (
     <div className="space-y-6 animate-fade-in pb-12">
       <div className="bg-[#FFFEF5] rounded-3xl shadow-sm border border-[#E0D8C0] overflow-hidden">
-        <div className="bg-[#7BC64F]/20 px-5 py-4 border-b border-[#E0D8C0] flex justify-between items-center sticky top-0 z-10 backdrop-blur-sm">
-           <h3 className="font-bold text-[#5D4632] flex items-center gap-2 text-lg"><Package size={20} className="text-[#7BC64F]" />共享冰箱</h3>
-           <span className="text-xs text-[#8C7B65] bg-white/60 px-2 py-1 rounded-full">點擊選擇</span>
+        <div className="bg-[#7BC64F]/20 px-5 py-4 border-b border-[#E0D8C0] flex flex-col gap-2 sticky top-0 z-10 backdrop-blur-sm">
+           <div className="flex justify-between items-center">
+               <h3 className="font-bold text-[#5D4632] flex items-center gap-2 text-lg"><Package size={20} className="text-[#7BC64F]" />共享冰箱 (食材庫)</h3>
+               <span className="text-xs text-[#8C7B65] bg-white/60 px-2 py-1 rounded-full">點擊可選擇 (AI用)</span>
+           </div>
+           {totalIngredients > 0 && (
+               <div className="flex items-center gap-2 text-xs font-bold text-[#5D4632]">
+                   <div className="flex-1 h-2 bg-white rounded-full overflow-hidden border border-[#E0D8C0]">
+                       <div className="h-full bg-[#7BC64F] transition-all duration-500" style={{ width: `${progressPercent}%` }}></div>
+                   </div>
+                   <span>{claimedIngredients}/{totalIngredients} ({progressPercent}%)</span>
+               </div>
+           )}
         </div>
         <div className="p-3 space-y-2 max-h-[400px] overflow-y-auto">
           {ingredients.map(ing => {
-            const isMine = ing.owner.id === currentUser.id;
-            const canDelete = isMine || currentUser.isAdmin;
-            const isLocked = ing.usedInPlanId !== null;
-            const isReassigning = String(reassigningId) === String(ing.id);
+            const isMine = ing.owner?.id === currentUser.id;
+            const isBuy = !ing.owner; // No owner = Need to Buy
+            const canDelete = isMine || currentUser.isAdmin || isBuy;
+            const planContext = getPlanContext(ing.usedInPlanId);
+            const isLocked = planContext !== null;
+            const isAssigning = String(assigningIngredientId) === String(ing.id);
+            const isUserLocked = !!ing.owner && !isMine && !currentUser.isAdmin; 
+            
             return (
-              <div key={ing.id} className={`flex items-center justify-between p-3 rounded-2xl group transition-all select-none border-2 active:scale-[0.99] relative ${isLocked ? 'bg-[#E0D8C0]/30 border-transparent opacity-90' : ing.selected ? 'bg-white border-[#7BC64F] shadow-sm' : 'bg-white border-[#E0D8C0]/30 hover:border-[#F2CC8F] cursor-pointer'}`} onClick={() => !isReassigning && !isLocked && toggleIngredient(ing.id)}>
-                <div className="flex items-center gap-3 flex-1 pointer-events-none">
-                  <div className={`w-8 h-8 rounded-full border-2 flex items-center justify-center transition-all flex-shrink-0 ${isLocked ? 'bg-[#E0D8C0] border-[#E0D8C0]' : ing.selected ? 'bg-[#7BC64F] border-[#7BC64F]' : 'border-[#E0D8C0] bg-white'}`}>
-                    {isLocked && <Lock size={14} className="text-white" />}
-                    {!isLocked && ing.selected && <Check size={16} className="text-white" />}
-                  </div>
-                  <div className="flex flex-col">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className={`font-bold text-base ${ing.selected || isLocked ? 'text-[#5D4632]' : 'text-[#8C7B65]'}`}>{ing.name}</span>
-                      {isLocked && ( <span className="text-[10px] bg-[#E0D8C0] text-[#5D4632] px-2 py-0.5 rounded-full flex items-center gap-1 font-bold whitespace-nowrap">🔒 用於 {getPlanName(ing.usedInPlanId)}</span> )}
+              <div key={ing.id} className={`flex flex-col p-3 rounded-2xl group transition-all select-none border-2 active:scale-[0.99] relative ${ing.selected ? 'bg-white border-[#7BC64F] shadow-sm' : 'bg-white border-[#E0D8C0]/30 hover:border-[#F2CC8F] cursor-pointer'}`} onClick={() => !isAssigning && toggleIngredient(ing.id)}>
+                <div className="flex items-center justify-between gap-2">
+                    {/* Left: Avatar Circle */}
+                    <div className="flex items-center gap-3 flex-1 min-w-0 pointer-events-none">
+                        <div className={`w-10 h-10 rounded-full border-2 flex items-center justify-center transition-all flex-shrink-0 relative overflow-hidden bg-white ${ing.selected ? 'border-[#7BC64F]' : 'border-[#E0D8C0]'}`}>
+                            {ing.owner ? (
+                                <span className="text-xl">{ing.owner.avatar}</span>
+                            ) : (
+                                <ShoppingBag size={18} className="text-[#E76F51]" />
+                            )}
+                            {ing.selected && (
+                                <div className="absolute inset-0 bg-[#7BC64F]/80 flex items-center justify-center">
+                                    <Check size={20} className="text-white" />
+                                </div>
+                            )}
+                        </div>
+                        <div className="flex flex-col flex-1 min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                                <span className={`font-bold text-base truncate ${ing.selected ? 'text-[#5D4632]' : 'text-[#8C7B65]'}`}>{ing.name}</span>
+                            </div>
+                            <div className="flex items-center gap-1 mt-0.5">
+                                {ing.owner ? (
+                                    <span className={`text-[10px] px-2 py-0.5 rounded-full flex items-center gap-1 truncate ${isMine ? 'bg-[#E9F5D8] text-[#5D4632]' : 'bg-[#F9F7F2] text-[#8C7B65]'}`}>
+                                        {ing.owner.name}
+                                    </span>
+                                ) : (
+                                    <span className="text-[10px] text-[#E76F51] bg-[#E76F51]/10 px-2 py-0.5 rounded-full font-bold flex items-center gap-1 whitespace-nowrap">
+                                        需採買
+                                    </span>
+                                )}
+                            </div>
+                        </div>
                     </div>
-                    <div onClick={(e) => { if (currentUser.isAdmin) { e.stopPropagation(); setReassigningId(String(ing.id)); } }} className={`text-xs flex items-center gap-1 mt-0.5 w-fit rounded-full transition-colors ${currentUser.isAdmin ? 'cursor-pointer hover:bg-[#E0D8C0]/50 pointer-events-auto pr-2 -ml-1 pl-1 border border-transparent hover:border-[#E0D8C0]' : 'text-[#8C7B65]'}`}>
-                      {ing.owner.avatar} <span className={currentUser.isAdmin ? 'underline decoration-dashed decoration-[#8C7B65]' : ''}>{ing.owner.name} 提供</span>
-                      {currentUser.isAdmin && <Edit2 size={10} className="opacity-50" />}
+                    
+                    {/* Right: Actions (Claim, Qty, Delete) */}
+                    <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
+                        {/* Claim/Assign Button */}
+                        {isAssigning ? (
+                             <div className="absolute right-2 bg-white shadow-xl border-2 border-[#E76F51] rounded-2xl p-2 z-20 flex gap-2 items-center animate-fade-in max-w-[250px] overflow-x-auto" onClick={e => e.stopPropagation()}>
+                                <button onClick={() => handleClaimIngredient(ing.id, null)} className="w-8 h-8 rounded-full bg-[#E0D8C0] text-white flex items-center justify-center shrink-0 hover:bg-[#E76F51]" title="設為需採買"><ShoppingBag size={14} /></button>
+                                {members.map(m => ( <button key={m.id} onClick={() => handleClaimIngredient(ing.id, { id: m.id, name: m.name, avatar: m.avatar })} className="w-8 h-8 rounded-full bg-[#E9F5D8] border border-[#7BC64F] text-sm shrink-0 hover:scale-110 transition-transform" title={`指派給 ${m.name}`}>{m.avatar}</button> ))}
+                                <button onClick={() => setAssigningIngredientId(null)} className="ml-1 text-[#8C7B65]"><X size={16}/></button>
+                             </div>
+                        ) : (
+                            <button 
+                                onClick={(e) => { 
+                                    e.stopPropagation(); 
+                                    if (currentUser.isAdmin) { 
+                                        setAssigningIngredientId(String(ing.id)); 
+                                    } else { 
+                                        handleClaimIngredient(ing.id); 
+                                    } 
+                                }} 
+                                disabled={isUserLocked} 
+                                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm active:scale-95 whitespace-nowrap pointer-events-auto ${
+                                    isMine ? 'bg-white border-2 border-[#7BC64F] text-[#7BC64F] hover:bg-[#7BC64F]/10' : 
+                                    (ing.owner && currentUser.isAdmin) ? 'bg-[#E76F51] text-white hover:bg-[#D65F41]' : 
+                                    isUserLocked ? 'bg-[#E0D8C0] text-white cursor-not-allowed' : 
+                                    'bg-[#F4A261] text-white hover:bg-[#E76F51]'
+                                }`}
+                            >
+                                {isMine ? '取消' : (ing.owner && currentUser.isAdmin) ? '指派' : isUserLocked ? '鎖定' : '我帶'}
+                            </button>
+                        )}
+
+                        <input 
+                            type="text" 
+                            placeholder="份量" 
+                            value={ing.quantity || ''} 
+                            onChange={(e) => handleUpdateQuantity(ing.id, e.target.value)}
+                            className="w-14 bg-[#F9F7F2] border border-[#E0D8C0] rounded-lg px-2 py-1.5 text-xs text-[#5D4632] text-center focus:border-[#7BC64F] focus:outline-none placeholder:text-[#E0D8C0]"
+                        />
+                        
+                        {(canDelete) && (
+                            <button onClick={(e) => { e.stopPropagation(); handleDeleteIngredient(ing.id); }} className={`p-1.5 rounded-full transition-all z-20 pointer-events-auto text-[#E0D8C0] hover:text-[#E76F51] hover:bg-[#E76F51]/10`} title="刪除">
+                                <Trash2 size={16} />
+                            </button>
+                        )}
                     </div>
-                  </div>
                 </div>
-                {(canDelete || (isLocked && currentUser.isAdmin)) && (
-                  <button onClick={(e) => { e.stopPropagation(); handleDeleteIngredient(ing.id); }} className={`p-3 rounded-full transition-all z-20 pointer-events-auto ${isLocked ? 'bg-[#E76F51] text-white hover:bg-[#D65F41] shadow-sm' : 'text-[#E0D8C0] hover:text-[#E76F51]'}`} title={isLocked ? "刪除 (將解除連結)" : "刪除"}>
-                    {isLocked ? <Trash2 size={16} fill="white" /> : <Trash2 size={20} />}
-                  </button>
-                )}
-                {isReassigning && (
-                    <div className="absolute left-2 bottom-12 bg-white shadow-xl border-2 border-[#E76F51] rounded-2xl p-2 z-30 flex gap-2 items-center animate-fade-in max-w-[280px] overflow-x-auto" onClick={(e) => e.stopPropagation()}>
-                        <span className="text-[10px] font-bold text-[#E76F51] whitespace-nowrap px-1">改為:</span>
-                        {members.map(m => ( <button key={m.id} onClick={() => handleReassign(ing.id, m)} className="w-8 h-8 rounded-full bg-[#E9F5D8] border border-[#7BC64F] text-sm shrink-0 hover:scale-110 transition-transform" title={`指派給 ${m.name}`}>{m.avatar}</button> ))}
-                        <button onClick={() => setReassigningId(null)} className="ml-1 text-[#8C7B65] p-1"><X size={16}/></button>
+
+                {/* Usage Context Label - SHOWING DAY/MEAL/DISH */}
+                {planContext ? (
+                    <div className="mt-2 ml-[52px] flex items-center gap-1.5 text-xs pointer-events-none">
+                         <span className={`px-2 py-0.5 rounded-full font-bold text-white shadow-sm flex items-center gap-1 ${planContext.mealType === 'dinner' ? 'bg-[#2A9D8F]' : planContext.mealType === 'lunch' ? 'bg-[#F2CC8F] text-[#5D4632]' : 'bg-[#F4A261]'}`}>
+                            {planContext.label}
+                         </span>
+                         <span className="text-[#5D4632] font-bold">
+                             {planContext.menu}
+                         </span>
+                    </div>
+                ) : (
+                    <div className="mt-2 ml-[52px] text-[10px] text-[#E76F51] font-bold bg-[#E76F51]/5 px-2 py-0.5 rounded w-fit">
+                        尚未分配到任何料理
                     </div>
                 )}
               </div>
@@ -396,6 +573,7 @@ const KitchenSection: React.FC<KitchenSectionProps> = ({ ingredients, setIngredi
           })}
           {ingredients.length === 0 && ( <div className="text-center py-8 text-[#8C7B65] text-sm italic">冰箱空空的...<br/>快用下方對話框輸入或拍照新增食材！</div> )}
         </div>
+        {/* Input Bar */}
         <div className="p-3 bg-white border-t border-[#E0D8C0] flex items-end gap-2 sticky bottom-0 z-20 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
           <input type="file" accept="image/*" capture="environment" className="hidden" ref={cameraInputRef} onChange={handleImageUpload}/>
           <input type="file" accept="image/*" className="hidden" ref={galleryInputRef} onChange={handleImageUpload}/>
@@ -411,6 +589,7 @@ const KitchenSection: React.FC<KitchenSectionProps> = ({ ingredients, setIngredi
       </div>
 
       <div className="bg-[#FFFEF5] p-5 rounded-3xl shadow-sm border border-[#E0D8C0]">
+        {/* ... (Keep controls) ... */}
         <div className="mb-4 bg-[#F2CC8F]/20 p-4 rounded-2xl border border-[#F2CC8F]/50">
           <label className="block text-xs font-bold text-[#E76F51] mb-2 uppercase tracking-wide flex items-center gap-1"><Users size={14} /> 狸克提醒：用餐人數</label>
           <div className="flex gap-3">
@@ -445,26 +624,90 @@ const KitchenSection: React.FC<KitchenSectionProps> = ({ ingredients, setIngredi
       </div>
 
       <div className="space-y-4">
-        {mealPlans.map((plan) => (
-          <div key={plan.id} className="bg-[#FFFEF5] rounded-3xl shadow-lg overflow-hidden border border-[#E0D8C0] relative group">
-            {currentUser.isAdmin && (
-                <button 
-                onClick={() => handleDeletePlan(plan.id)}
-                className="absolute top-3 right-3 p-2 bg-[#E76F51] text-white hover:bg-[#D65F41] rounded-full transition-colors z-10 shadow-sm border border-[#E76F51] active:scale-90"
-                title="解散餐點"
-                >
-                <Trash2 size={20} />
-                </button>
-            )}
-            <div className="bg-[#F2CC8F]/20 p-5 border-b border-[#E0D8C0]">
-              <div className="flex items-center gap-2 text-[#E76F51] font-bold text-xs uppercase mb-1 bg-white/60 px-2 py-1 rounded-full w-fit">{getMealIcon(plan.mealType)}{plan.title}</div>
-              <h2 className="text-xl font-bold text-[#5D4632] mt-2">{plan.menuName}</h2>
-              <p className="text-sm text-[#8C7B65] mt-2 bg-white/50 p-3 rounded-2xl border border-[#E0D8C0]/50 italic">"{plan.reason}"</p>
-            </div>
-            <div className="p-5 text-center text-[#8C7B65] text-sm">請至「菜單」頁面查看詳細食材清單與料理步驟。</div>
-          </div>
-        ))}
-        {mealPlans.length === 0 && ( <div className="text-center py-12 text-[#8C7B65] bg-[#E0D8C0]/20 rounded-3xl border-2 border-dashed border-[#E0D8C0]"><ChefHat size={48} className="mx-auto text-[#E0D8C0] mb-3" /><p>還沒有安排任何餐點喔！<br/>快去上方選擇食材吧。</p></div> )}
+        {/* GROUPED PLANS */}
+        {sortedKeys.length > 0 ? (
+            sortedKeys.map(key => {
+                const group = groupedPlans[key];
+                const isExpanded = expandedGroups[key] !== false; 
+                const groupTitle = `${group.dayLabel} ${getMealLabel(group.mealType)}`;
+                
+                return (
+                    <div key={key} className="bg-[#FFFEF5] rounded-3xl shadow-md overflow-hidden border border-[#E0D8C0]">
+                         <div 
+                            className="bg-[#F2CC8F]/20 p-4 border-b border-[#E0D8C0] flex items-center justify-between cursor-pointer hover:bg-[#F2CC8F]/30 transition-colors"
+                            onClick={() => toggleGroupExpand(key)}
+                         >
+                             <div className="flex items-center gap-3">
+                                 <div className={`p-2.5 rounded-full shadow-sm text-white ${
+                                     group.mealType === 'breakfast' ? 'bg-[#F4A261]' :
+                                     group.mealType === 'lunch' ? 'bg-[#F2CC8F] text-[#5D4632]' :
+                                     group.mealType === 'dinner' ? 'bg-[#2A9D8F]' :
+                                     'bg-[#E76F51]'
+                                 }`}>
+                                     {getMealIcon(group.mealType)}
+                                 </div>
+                                 <h3 className="font-bold text-[#5D4632] text-lg">{groupTitle}</h3>
+                                 <span className="text-xs bg-white/60 px-2 py-1 rounded-full text-[#8C7B65] font-bold">
+                                     {group.plans.length} 道料理
+                                 </span>
+                             </div>
+                             <div className="text-[#8C7B65]">
+                                 {isExpanded ? <ChevronUp size={20}/> : <ChevronDown size={20}/>}
+                             </div>
+                         </div>
+                         
+                         {isExpanded !== false && (
+                             <div className="divide-y divide-[#E0D8C0]/50">
+                                 {group.plans.map(plan => (
+                                     <div key={plan.id} className="p-4 relative hover:bg-[#F9F7F2] transition-colors group">
+                                         {/* ... (Keep existing plan details) ... */}
+                                         <div className="flex justify-between items-start pr-8">
+                                             <div>
+                                                 <h4 className="font-bold text-[#5D4632] text-lg mb-1">{plan.menuName}</h4>
+                                                 {plan.reason && (
+                                                     <p className="text-xs text-[#8C7B65] opacity-80 italic line-clamp-2">"{plan.reason}"</p>
+                                                 )}
+                                             </div>
+                                         </div>
+                                         <div className="mt-3 flex items-center justify-between">
+                                             <div className="flex gap-2 text-xs">
+                                                  <span className="bg-[#E9F5D8] text-[#5D4632] px-2 py-1 rounded-lg border border-[#7BC64F]/20 flex items-center gap-1">
+                                                     <ChefHat size={12} /> {plan.checklist.length} 項食材
+                                                  </span>
+                                                  {plan.recipe?.steps?.length > 0 && (
+                                                       <span className="bg-[#FFFEF5] text-[#8C7B65] px-2 py-1 rounded-lg border border-[#E0D8C0] flex items-center gap-1">
+                                                          <Calendar size={12}/> 有步驟
+                                                       </span>
+                                                  )}
+                                             </div>
+                                         </div>
+
+                                         {currentUser.isAdmin && (
+                                            <button 
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleDeletePlan(plan.id);
+                                            }}
+                                            className="absolute top-4 right-4 p-2 text-[#E0D8C0] hover:text-[#E76F51] hover:bg-[#E76F51]/10 rounded-full transition-colors active:scale-90"
+                                            title="解散此料理"
+                                            >
+                                            <Trash2 size={18} />
+                                            </button>
+                                        )}
+                                        
+                                        <div className="text-center mt-3 pt-3 border-t border-dashed border-[#E0D8C0]/50 text-xs text-[#8C7B65] opacity-60">
+                                            請至「菜單」頁面查看詳細清單
+                                        </div>
+                                     </div>
+                                 ))}
+                             </div>
+                         )}
+                    </div>
+                );
+            })
+        ) : (
+             <div className="text-center py-12 text-[#8C7B65] bg-[#E0D8C0]/20 rounded-3xl border-2 border-dashed border-[#E0D8C0]"><ChefHat size={48} className="mx-auto text-[#E0D8C0] mb-3" /><p>還沒有安排任何餐點喔！<br/>快去上方選擇食材吧。</p></div>
+        )}
       </div>
     </div>
   );

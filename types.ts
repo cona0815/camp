@@ -34,9 +34,11 @@ export interface GearItem {
 export interface Ingredient {
   id: number;
   name: string;
+  quantity?: string; // New: Quantity description (e.g., "300g", "2包")
   selected: boolean;
   usedInPlanId: number | null;
-  owner: { id: string; name: string; avatar: string };
+  // If owner is null, it implies "Need to Buy" / Public
+  owner: { id: string; name: string; avatar: string } | null;
 }
 
 export interface ShoppingItem {
@@ -55,6 +57,7 @@ export interface Recipe {
 export interface CheckItem {
   id: string;
   name: string;
+  quantity?: string; // Add quantity here
   checked: boolean;
   owner: { name: string; avatar: string } | null; // null means "Buy/Custom"
   sourceIngredientId: number | null; // Links back to inventory

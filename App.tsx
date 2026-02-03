@@ -9,19 +9,11 @@ import {
   MapPin, 
   Shield, 
   Settings,
-  Shirt,
   LogOut,
   RefreshCw,
-  CloudOff,
   Backpack,
   Image as ImageIcon,
-  CloudRain,
-  Sun,
-  Cloud,
-  Snowflake,
-  Wind,
-  AlertTriangle,
-  XCircle
+  AlertTriangle
 } from 'lucide-react';
 import { 
   INITIAL_GEAR, 
@@ -65,7 +57,6 @@ export default function App() {
 
   // System State
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
-  const [showWeatherGuide, setShowWeatherGuide] = useState(false);
   const [isLoading, setIsLoading] = useState(false); // Changed default to false, will be set true in loadData
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncError, setSyncError] = useState(false);
@@ -243,34 +234,6 @@ export default function App() {
   }, [gearList, ingredients, mealPlans, bills, members, tripInfo, checkedDeparture, checkedReturn, isSetupRequired]);
 
 
-  // Helper Logic
-  const getWeatherAdvice = (tempStr: string) => {
-    const temp = parseInt(tempStr);
-    if (isNaN(temp)) return "請根據當地天氣預報穿著。";
-    if (temp < 10) return "寒流警報！請準備發熱衣、羽絨外套、毛帽與暖暖包。洋蔥式穿法最保暖。";
-    if (temp < 18) return "稍有涼意，建議穿著長袖、薄外套或背心。早晚溫差大，注意保暖。";
-    if (temp < 25) return "舒適的氣溫！短袖搭配薄外套即可，活動方便為主。";
-    return "天氣炎熱，請穿著透氣排汗的短袖衣物，並注意防曬與補充水分。";
-  };
-
-  // Dynamic Weather Icon based on condition string
-  const getWeatherIcon = (cond: string) => {
-      if (cond.includes('雨')) return <CloudRain size={12} />;
-      if (cond.includes('晴')) return <Sun size={12} />;
-      if (cond.includes('雲') || cond.includes('陰')) return <Cloud size={12} />;
-      if (cond.includes('雪')) return <Snowflake size={12} />;
-      return <Wind size={12} />;
-  };
-  
-  // Large version for modal
-  const getWeatherIconLarge = (cond: string) => {
-      if (cond.includes('雨')) return <CloudRain size={48} />;
-      if (cond.includes('晴')) return <Sun size={48} />;
-      if (cond.includes('雲') || cond.includes('陰')) return <Cloud size={48} />;
-      if (cond.includes('雪')) return <Snowflake size={48} />;
-      return <Wind size={48} />;
-  };
-
   const calculateProgress = () => {
     if (!currentUser) return 0;
 
@@ -279,7 +242,8 @@ export default function App() {
     // Personal Gear (Everyone has these)
     const myPersonalGear = gearList.filter(g => g.category === 'personal');
     // Ingredients assigned to me
-    const myIngredients = ingredients.filter(item => item.owner.id === currentUser.id);
+    // FIXED: Added optional chaining 'item.owner?.id' to prevent crash on 'Need to Buy' items (owner: null)
+    const myIngredients = ingredients.filter(item => item.owner && item.owner.id === currentUser.id);
 
     const total = myPublicGear.length + myPersonalGear.length + myIngredients.length;
     if (total === 0) return 0;
@@ -294,7 +258,6 @@ export default function App() {
   };
 
   const handleLocationClick = () => {
-    // FIXED: Added '$' for string interpolation and corrected the URL structure
     window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(tripInfo.location)}`, '_blank');
   };
 
@@ -539,16 +502,6 @@ export default function App() {
               <MapPin size={12} /> <span className="truncate max-w-[150px]">{tripInfo.location}</span>
             </button>
             
-            <button 
-              onClick={() => setShowWeatherGuide(true)}
-              className="flex-shrink-0 flex items-center gap-1 hover:text-[#F2CC8F] transition-colors active:scale-95 bg-white/10 px-2.5 py-1 rounded-full backdrop-blur-sm hover:bg-white/20"
-              title="點擊查看穿著建議"
-            >
-              <span className="flex items-center gap-1">
-                 {getWeatherIcon(tripInfo.weather.cond)} {tripInfo.weather.temp}
-              </span>
-            </button>
-
             {/* Readiness Badge - Moved here as requested */}
             <button 
                 onClick={() => setActiveTab('check')}
@@ -717,33 +670,6 @@ export default function App() {
         // We cast handleClearCurrentTrip to any just in case, but strict typing should work if everything is synced.
         {...{ onClearCurrentTrip: handleClearCurrentTrip } as any}
       />
-
-      {/* Weather Guide Modal */}
-      {showWeatherGuide && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in" onClick={() => setShowWeatherGuide(false)}>
-          <div className="bg-[#FFFEF5] w-full max-w-sm rounded-3xl shadow-xl overflow-hidden border-4 border-[#E0D8C0]" onClick={e => e.stopPropagation()}>
-            <div className="bg-[#8ECAE6] p-4 flex justify-between items-center text-[#5D4632]">
-              <h3 className="font-bold text-lg flex items-center gap-2">
-                <Shirt size={20} /> 狸克氣象台建議
-              </h3>
-              <button onClick={() => setShowWeatherGuide(false)} className="p-1 hover:bg-white/20 rounded-full transition-colors">
-                <Settings size={0} className="hidden" />
-                <div className="font-bold text-xl px-2">✕</div>
-              </button>
-            </div>
-            <div className="p-6 text-center">
-              <div className="flex justify-center mb-4 text-[#F4A261]">
-                {getWeatherIconLarge(tripInfo.weather.cond)}
-              </div>
-              <div className="text-3xl font-bold text-[#5D4632] mb-2">{tripInfo.weather.temp}</div>
-              <div className="text-[#8C7B65] font-bold mb-4">{tripInfo.weather.cond}</div>
-              <div className="bg-[#E9F5D8] p-4 rounded-2xl text-[#5D4632] text-sm leading-relaxed border border-[#7BC64F]/30">
-                {getWeatherAdvice(tripInfo.weather.temp)}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Footer Info - Updated for Quick Switch */}
       <div className="text-center mt-8 pb-10 text-xs text-[#8C7B65] font-bold flex flex-col items-center gap-3">
