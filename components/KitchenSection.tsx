@@ -295,7 +295,7 @@ const KitchenSection: React.FC<KitchenSectionProps> = ({ ingredients, setIngredi
                           name: ing.name,
                           quantity: ing.quantity,
                           checked: false,
-                          owner: { name: ing.owner.name, avatar: ing.owner.avatar },
+                          owner: ing.owner ? { name: ing.owner.name, avatar: ing.owner.avatar } : null,
                           sourceIngredientId: ing.id
                      });
                      assignedIngredientIds.add(ing.id);
