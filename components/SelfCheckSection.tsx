@@ -82,7 +82,7 @@ const SelfCheckSection: React.FC<SelfCheckSectionProps> = ({
       if (type === 'breakfast') return '早餐';
       if (type === 'lunch') return '午餐';
       if (type === 'dinner') return '晚餐';
-      if (type === 'snack') return '點心';
+      if (type === 'snack') return '點心/飲料';
       return '餐點';
   };
 
@@ -104,11 +104,107 @@ const SelfCheckSection: React.FC<SelfCheckSectionProps> = ({
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
 
-    // Sort plans by Day, then by Meal order
-    const sortedPlans = [...mealPlans].sort((a, b) => {
-        if (a.dayLabel !== b.dayLabel) return a.dayLabel.localeCompare(b.dayLabel, 'zh-TW');
-        const order: Record<string, number> = { breakfast: 1, lunch: 2, dinner: 3 };
-        return (order[a.mealType] || 4) - (order[b.mealType] || 4);
+    // --- Grouping Logic ---
+    const groupedPlans: Record<string, Record<string, MealPlan[]>> = {};
+    
+    mealPlans.forEach(plan => {
+        const day = plan.dayLabel || '其他';
+        const meal = plan.mealType || 'other';
+        
+        if (!groupedPlans[day]) groupedPlans[day] = {};
+        if (!groupedPlans[day][meal]) groupedPlans[day][meal] = [];
+        groupedPlans[day][meal].push(plan);
+    });
+
+    const mealTypeOrder = ['breakfast', 'lunch', 'dinner', 'snack'];
+    
+    // Helper function to render checklists
+    const renderChecklist = (items: any[]) => {
+        if (!items || items.length === 0) return '<span style="color:#999; font-size: 0.9em;">無特殊食材</span>';
+        
+        return items.map(item => {
+            let isOthers = false;
+            // 1. Try to find source ingredient for accurate ID comparison
+            if (item.sourceIngredientId) {
+                const sourceIng = ingredients.find(i => i.id === item.sourceIngredientId);
+                if (sourceIng && sourceIng.owner && sourceIng.owner.id !== currentUser.id) {
+                    isOthers = true;
+                }
+            } else if (item.owner && item.owner.name !== currentUser.name) {
+                // 2. Fallback: check name if custom item
+                isOthers = true;
+            }
+            
+            let isChecked = isOthers;
+            if (!isChecked && item.sourceIngredientId && checkedItems[`food-${item.sourceIngredientId}`]) {
+                isChecked = true;
+            }
+
+            const ownerName = item.owner ? `(${item.owner.name})` : '';
+            const qty = item.quantity ? `<span style="font-size:0.8em; color:#666; margin-left:2px;">x${item.quantity}</span>` : '';
+
+            return `
+            <div style="width: 50%; display: flex; align-items: center; margin-bottom: 4px; font-size: 0.95em;">
+                <span class="checkbox ${isChecked ? 'forced' : ''}" style="width: 12px; height: 12px; border-width: 1px; margin-right: 6px;"></span>
+                <span class="${isChecked ? 'text-forced' : ''}">${item.name}${qty}</span>
+                ${ownerName ? `<span style="font-size:0.7em; color:#999; margin-left: 5px;">${ownerName}</span>` : ''}
+            </div>
+            `;
+        }).join('');
+    };
+
+    // Generate HTML for Meals
+    let mealsHtml = '';
+    const sortedDayKeys = Object.keys(groupedPlans).sort((a, b) => {
+         if (a === '行程通用') return 1; 
+         if (b === '行程通用') return -1;
+         return a.localeCompare(b, 'zh-TW');
+    });
+
+    sortedDayKeys.forEach(day => {
+        const mealsObj = groupedPlans[day];
+        const sortedMealKeys = Object.keys(mealsObj).sort((a, b) => {
+            return mealTypeOrder.indexOf(a) - mealTypeOrder.indexOf(b);
+        });
+
+        sortedMealKeys.forEach(mealType => {
+            const plans = mealsObj[mealType];
+            const mealLabel = getMealLabel(mealType);
+            
+            // Start Meal Block
+            mealsHtml += `<div style="margin-bottom: 20px; border: 1px solid #ddd; padding: 15px; border-radius: 8px; page-break-inside: avoid;">`;
+            
+            // Header
+            mealsHtml += `<div style="font-weight: bold; font-size: 1.2em; color: #5D4632; margin-bottom: 10px; border-bottom: 2px solid #F2CC8F; padding-bottom: 5px;">
+                            ${day} - ${mealLabel}
+                         </div>`;
+            
+            // Content
+            if (mealType === 'snack' && day === '行程通用') {
+                 // 合併所有點心
+                 const allItems: any[] = [];
+                 plans.forEach(p => allItems.push(...p.checklist));
+                 
+                 mealsHtml += `<div style="background: #f9f9f9; padding: 10px; border-radius: 5px; -webkit-print-color-adjust: exact;">
+                                <div style="display: flex; flex-wrap: wrap;">
+                                    ${renderChecklist(allItems)}
+                                </div>
+                               </div>`;
+            } else {
+                // 分開列出料理
+                plans.forEach(plan => {
+                    mealsHtml += `<div style="margin-bottom: 15px;">`;
+                    mealsHtml += `   <div style="font-weight: bold; color: #2A9D8F; margin-bottom: 5px; font-size: 1em;">🔹 ${plan.menuName}</div>`;
+                    mealsHtml += `   <div style="background: #f9f9f9; padding: 8px; border-radius: 5px; -webkit-print-color-adjust: exact;">`;
+                    mealsHtml += `      <div style="display: flex; flex-wrap: wrap;">`;
+                    mealsHtml +=            renderChecklist(plan.checklist);
+                    mealsHtml += `      </div>`;
+                    mealsHtml += `   </div>`;
+                    mealsHtml += `</div>`;
+                });
+            }
+            mealsHtml += `</div>`;
+        });
     });
 
     const htmlContent = `
@@ -152,10 +248,8 @@ const SelfCheckSection: React.FC<SelfCheckSectionProps> = ({
         <h3>📍 公用裝備 (分配認領)</h3>
         <div class="list-container">
           ${publicGear.map(item => {
-            // PDF Logic: If owned by someone else, force check and strikethrough
             const isOthers = item.owner && item.owner.id !== currentUser.id;
             const isChecked = isOthers ? true : checkedItems[`gear-${item.id}`];
-            
             return `
             <div class="item-row">
               <span class="checkbox ${isChecked ? 'forced' : ''}"></span>
@@ -179,49 +273,7 @@ const SelfCheckSection: React.FC<SelfCheckSectionProps> = ({
         
         <h2 style="page-break-before: always;">🥘 菜單與食材表</h2>
         
-        ${sortedPlans.map(plan => `
-            <div style="margin-bottom: 20px; border: 1px solid #ddd; padding: 15px; border-radius: 8px; page-break-inside: avoid;">
-                <div style="font-weight: bold; font-size: 1.1em; color: #5D4632; margin-bottom: 10px;">
-                    ${plan.dayLabel} - ${getMealLabel(plan.mealType)} : ${plan.menuName}
-                </div>
-                
-                <div style="background: #f9f9f9; padding: 10px; border-radius: 5px; -webkit-print-color-adjust: exact;">
-                    <strong>🛒 需帶食材：</strong>
-                    <div style="display: flex; flex-wrap: wrap; margin-top: 5px;">
-                        ${plan.checklist.map((item: any) => {
-                            // Check if this item belongs to "others"
-                            let isOthers = false;
-                            
-                            // 1. Try to find source ingredient for accurate ID comparison
-                            if (item.sourceIngredientId) {
-                                const sourceIng = ingredients.find(i => i.id === item.sourceIngredientId);
-                                // FIXED: Check for sourceIng.owner existence
-                                if (sourceIng && sourceIng.owner && sourceIng.owner.id !== currentUser.id) {
-                                    isOthers = true;
-                                }
-                            } else if (item.owner && item.owner.name !== currentUser.name) {
-                                // 2. Fallback: check name if custom item
-                                isOthers = true;
-                            }
-                            
-                            // Logic: Forced check if Others OR if User manually checked it in app (only applies if sourceIng exists for now)
-                            let isChecked = isOthers;
-                            if (!isChecked && item.sourceIngredientId && checkedItems[`food-${item.sourceIngredientId}`]) {
-                                isChecked = true;
-                            }
-
-                            return `
-                            <div style="width: 50%; display: flex; align-items: center; margin-bottom: 4px;">
-                                <span class="checkbox ${isChecked ? 'forced' : ''}" style="width: 12px; height: 12px; border-width: 1px;"></span>
-                                <span class="${isChecked ? 'text-forced' : ''}">${item.name}</span>
-                                ${item.owner ? `<span style="font-size:0.7em; color:#999; margin-left: 5px;">(${item.owner.name})</span>` : ''}
-                            </div>
-                        `}).join('')}
-                        ${plan.checklist.length === 0 ? '<span style="color:#999">無特殊食材</span>' : ''}
-                    </div>
-                </div>
-            </div>
-        `).join('')}
+        ${mealsHtml || '<p style="text-align:center; color:#999;">目前沒有餐點計畫</p>'}
 
         <script>
           window.onload = () => {

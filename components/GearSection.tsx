@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Tent, Star, Lock, Trash2, Plus, X, Shield, Check, User, Lightbulb, Grid, ChefHat, Armchair, Briefcase, Wrench, ChevronDown, ChevronUp, Gamepad2, Ban, AlertCircle } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { Tent, Star, Lock, Trash2, Plus, X, Shield, Check, User, Lightbulb, Grid, ChefHat, Armchair, Briefcase, Wrench, ChevronDown, ChevronUp, Gamepad2, Ban, AlertCircle, Package } from 'lucide-react';
 import { GearItem, User as UserType, TripInfo } from '../types';
 
 interface GearSectionProps {
@@ -63,6 +63,21 @@ const PRESET_GEAR_CATEGORIES: Record<string, string[]> = {
   ]
 };
 
+// Define Styles for each category
+const CATEGORY_STYLES: Record<string, { bg: string, border: string, text: string, icon: React.ReactNode, progress: string }> = {
+  "帳篷寢具": { bg: "bg-indigo-50", border: "border-indigo-200", text: "text-indigo-800", icon: <Tent size={18}/>, progress: "bg-indigo-500" },
+  "廚房烹飪": { bg: "bg-orange-50", border: "border-orange-200", text: "text-orange-800", icon: <ChefHat size={18}/>, progress: "bg-orange-500" },
+  "共用食材調味料": { bg: "bg-amber-50", border: "border-amber-200", text: "text-amber-800", icon: <Package size={18}/>, progress: "bg-amber-500" },
+  "冬天保暖": { bg: "bg-rose-50", border: "border-rose-200", text: "text-rose-800", icon: <Briefcase size={18}/>, progress: "bg-rose-500" },
+  "夏天涼快": { bg: "bg-cyan-50", border: "border-cyan-200", text: "text-cyan-800", icon: <Briefcase size={18}/>, progress: "bg-cyan-500" },
+  "桌椅家具": { bg: "bg-stone-50", border: "border-stone-200", text: "text-stone-800", icon: <Armchair size={18}/>, progress: "bg-stone-500" },
+  "燈光溫控": { bg: "bg-yellow-50", border: "border-yellow-200", text: "text-yellow-800", icon: <Lightbulb size={18}/>, progress: "bg-yellow-500" },
+  "3C娛樂": { bg: "bg-violet-50", border: "border-violet-200", text: "text-violet-800", icon: <Gamepad2 size={18}/>, progress: "bg-violet-500" },
+  "個人衛浴": { bg: "bg-teal-50", border: "border-teal-200", text: "text-teal-800", icon: <User size={18}/>, progress: "bg-teal-500" },
+  "工具雜項": { bg: "bg-slate-50", border: "border-slate-200", text: "text-slate-800", icon: <Wrench size={18}/>, progress: "bg-slate-500" },
+  "其他/自訂": { bg: "bg-gray-50", border: "border-gray-200", text: "text-gray-700", icon: <Grid size={18}/>, progress: "bg-gray-500" }
+};
+
 const SCROLLBAR_STYLE = "overflow-y-auto [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-[#E0D8C0] [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-[#F4A261]";
 
 const GearSection: React.FC<GearSectionProps> = ({ gearList, setGearList, currentUser, members, tripInfo }) => {
@@ -75,6 +90,16 @@ const GearSection: React.FC<GearSectionProps> = ({ gearList, setGearList, curren
   const [selectedCategory, setSelectedCategory] = useState("帳篷寢具");
   const [targetCategory, setTargetCategory] = useState<'public' | 'personal'>('public');
   const [selectedPresets, setSelectedPresets] = useState<string[]>([]);
+
+  // Helper to detect category
+  const detectCategory = (itemName: string): string => {
+      for (const [category, items] of Object.entries(PRESET_GEAR_CATEGORIES)) {
+          if (items.includes(itemName) || items.some(i => itemName.includes(i))) {
+              return category;
+          }
+      }
+      return "其他/自訂";
+  };
 
   const handleClaim = (itemId: number | string, assignedUser?: {id: string, name: string} | null) => {
     setGearList(prev => prev.map(item => {
@@ -138,9 +163,6 @@ const GearSection: React.FC<GearSectionProps> = ({ gearList, setGearList, curren
     const item = gearList.find(i => String(i.id) === idStr);
     
     // Logic for "Mistake Deletion"
-    // 1. If Unclaimed (owner is null) -> Delete Instantly
-    // 2. If Claimed by ME -> Delete Instantly (I know what I'm doing)
-    // 3. If Claimed by OTHERS (Admin Action) -> Confirm First
     if (item && item.owner && item.owner.id !== currentUser.id) {
         if (!window.confirm(`⚠️ 注意：這是【${item.owner.name}】認領的裝備。\n\n確定要強制刪除嗎？`)) {
             return;
@@ -150,12 +172,159 @@ const GearSection: React.FC<GearSectionProps> = ({ gearList, setGearList, curren
     setGearList(prev => prev.filter(i => String(i.id) !== idStr));
   };
 
-  const publicGear = gearList.filter(g => g.category === 'public');
-  const personalGear = gearList.filter(g => g.category === 'personal');
+  // Grouping Logic
+  const publicGear = useMemo(() => {
+      const grouped: Record<string, GearItem[]> = {};
+      gearList.filter(g => g.category === 'public').forEach(item => {
+          const cat = detectCategory(item.name);
+          if(!grouped[cat]) grouped[cat] = [];
+          grouped[cat].push(item);
+      });
+      return grouped;
+  }, [gearList]);
+
+  const personalGear = useMemo(() => {
+      const grouped: Record<string, GearItem[]> = {};
+      gearList.filter(g => g.category === 'personal').forEach(item => {
+          const cat = detectCategory(item.name);
+          if(!grouped[cat]) grouped[cat] = [];
+          grouped[cat].push(item);
+      });
+      return grouped;
+  }, [gearList]);
   
+  const publicCount = gearList.filter(g => g.category === 'public').length;
+  const personalCount = gearList.filter(g => g.category === 'personal').length;
+
   // Calculate total items from presets + manual input split
   const manualCount = customItemName.trim() ? customItemName.split(/[,，、\s]+/).filter(s => s.trim()).length : 0;
   const totalItemsToAdd = selectedPresets.length + manualCount;
+
+  // Helper Component for Rendering a Group
+  const RenderGroup: React.FC<{ category: string, items: GearItem[], type: 'public' | 'personal' }> = ({ category, items, type }) => {
+      const style = CATEGORY_STYLES[category] || CATEGORY_STYLES["其他/自訂"];
+      
+      // Calculate Progress
+      const total = items.length;
+      let progress = 0;
+      let label = "";
+      
+      if (type === 'public') {
+          const claimed = items.filter(i => i.owner).length;
+          progress = Math.round((claimed / total) * 100);
+          label = `已認領 ${claimed}/${total}`;
+      } else {
+          const packed = items.filter(i => i.status === 'packed').length;
+          progress = Math.round((packed / total) * 100);
+          label = `已準備 ${packed}/${total}`;
+      }
+
+      return (
+          <div className={`mb-4 rounded-2xl overflow-hidden border ${style.border} ${style.bg}`}>
+              <div className={`px-4 py-2 flex items-center justify-between border-b ${style.border} bg-white/50`}>
+                  <div className="flex items-center gap-2">
+                      <div className={`p-1.5 rounded-full bg-white border ${style.border} ${style.text}`}>
+                          {style.icon}
+                      </div>
+                      <span className={`font-bold text-sm ${style.text}`}>{category}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                      <div className="text-[10px] font-bold opacity-60 text-right">
+                          {label}
+                      </div>
+                      <div className="w-16 h-2 bg-white rounded-full border border-black/5 overflow-hidden">
+                          <div className={`h-full transition-all duration-500 ${style.progress}`} style={{ width: `${progress}%` }}></div>
+                      </div>
+                  </div>
+              </div>
+              <div className="divide-y divide-black/5">
+                  {items.map(item => {
+                      const isMine = item.owner?.id === currentUser.id;
+                      const isLocked = type === 'public' && !!item.owner && !isMine && !currentUser.isAdmin; 
+                      const isAssigning = String(assigningItemId) === String(item.id);
+                      const canDelete = !item.owner || isMine || currentUser.isAdmin;
+                      const isPacked = item.status === 'packed';
+
+                      return (
+                          <div key={item.id} 
+                               className={`p-3 flex items-center justify-between transition-colors ${
+                                   type === 'personal' ? 'cursor-pointer hover:bg-black/5' : ''
+                               } ${
+                                   type === 'public' && isMine ? 'bg-[#7BC64F]/10' : ''
+                               } ${
+                                   type === 'personal' && isPacked ? 'opacity-60 bg-gray-50' : ''
+                               }`}
+                               onClick={() => type === 'personal' && handlePersonalCheck(item.id)}
+                          >
+                              {/* Left Side: Name & Status */}
+                              <div className="flex items-center gap-3 flex-1 pr-2">
+                                  {type === 'personal' && (
+                                      <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all flex-shrink-0 ${isPacked ? 'bg-[#219EBC] border-[#219EBC] text-white' : 'border-[#E0D8C0] bg-white'}`}>
+                                          {isPacked && <Check size={14} />}
+                                      </div>
+                                  )}
+                                  
+                                  <div>
+                                      <div className={`font-bold text-sm text-[#5D4632] flex flex-wrap items-center gap-2 ${type === 'personal' && isPacked ? 'line-through text-[#8C7B65]' : ''}`}>
+                                          {item.required && <span className="text-[#E76F51]"><Star size={10} fill="currentColor"/></span>}
+                                          {item.name}
+                                      </div>
+                                      
+                                      {type === 'public' && (
+                                          <div className="text-xs mt-1 flex items-center gap-1">
+                                              {item.owner ? (
+                                                  <span className={`px-2 py-0.5 rounded-full flex items-center gap-1 ${isMine ? 'bg-[#7BC64F]/20 text-[#38661d]' : 'bg-[#E0D8C0]/50 text-[#5D4632]'}`}>
+                                                      {isLocked && <Lock size={10} />}
+                                                      {item.owner.name}
+                                                  </span>
+                                              ) : (
+                                                  <span className="text-[#F4A261] font-bold bg-[#F4A261]/10 px-2 py-0.5 rounded-full text-[10px]">🔴 待認領</span>
+                                              )}
+                                          </div>
+                                      )}
+                                  </div>
+                              </div>
+
+                              {/* Right Side: Actions */}
+                              <div className="flex items-center gap-2 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+                                  {type === 'public' && (
+                                      isAssigning ? (
+                                          <div className="absolute right-4 bg-white shadow-xl border-2 border-[#E76F51] rounded-2xl p-2 z-20 flex gap-2 items-center animate-fade-in max-w-[250px] overflow-x-auto">
+                                              <button onClick={() => handleClaim(item.id, null)} className="w-8 h-8 rounded-full bg-[#E0D8C0] text-white flex items-center justify-center shrink-0 hover:bg-[#E76F51]"><Ban size={14} /></button>
+                                              {members.map(m => ( <button key={m.id} onClick={() => handleClaim(item.id, { id: m.id, name: m.name })} className="w-8 h-8 rounded-full bg-[#E9F5D8] border border-[#7BC64F] text-sm shrink-0 hover:scale-110 transition-transform">{m.avatar}</button> ))}
+                                              <button onClick={() => setAssigningItemId(null)} className="ml-1 text-[#8C7B65]"><X size={16}/></button>
+                                          </div>
+                                      ) : (
+                                          <button 
+                                              onClick={() => { if (currentUser.isAdmin) { setAssigningItemId(String(item.id)); } else { handleClaim(item.id); } }} 
+                                              disabled={isLocked} 
+                                              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm active:scale-95 ${isMine ? 'bg-white border-2 border-[#7BC64F] text-[#7BC64F]' : item.owner && currentUser.isAdmin ? 'bg-[#E76F51] text-white' : isLocked ? 'bg-[#E0D8C0] text-white cursor-not-allowed' : 'bg-[#F4A261] text-white'}`}
+                                          >
+                                              {isMine ? '取消' : (item.owner && currentUser.isAdmin) ? '指派' : isLocked ? '鎖定' : '我帶'}
+                                          </button>
+                                      )
+                                  )}
+
+                                  {canDelete && (
+                                      <button 
+                                          type="button"
+                                          onClick={() => handleDeleteItem(item.id)}
+                                          className={`p-2 rounded-full transition-all cursor-pointer hover:bg-red-50 group ${!item.owner ? 'text-[#E0D8C0] hover:text-[#E76F51]' : 'text-[#E76F51]'}`}
+                                          title="刪除"
+                                      >
+                                          <Trash2 size={16} className={!item.owner ? '' : 'fill-current'}/>
+                                      </button>
+                                  )}
+                              </div>
+                          </div>
+                      );
+                  })}
+              </div>
+          </div>
+      );
+  };
+
+  const orderedCategories = Object.keys(PRESET_GEAR_CATEGORIES).concat(["其他/自訂"]);
 
   return (
     <div className="space-y-6 animate-fade-in pb-20">
@@ -163,72 +332,18 @@ const GearSection: React.FC<GearSectionProps> = ({ gearList, setGearList, curren
       {/* 1. Public Gear */}
       <div className="bg-[#FFFEF5] rounded-3xl shadow-sm border border-[#E0D8C0] overflow-hidden">
         <div onClick={() => setIsPublicOpen(!isPublicOpen)} className="bg-[#F2CC8F]/30 px-5 py-4 border-b border-[#E0D8C0] flex justify-between items-center cursor-pointer hover:bg-[#F2CC8F]/40 transition-colors">
-          <h3 className="font-bold text-[#5D4632] flex items-center gap-2 text-lg"><Tent size={20} className="text-[#F4A261]" />公用裝備認領<span className="text-sm font-normal text-[#8C7B65]">({publicGear.length})</span></h3>
+          <h3 className="font-bold text-[#5D4632] flex items-center gap-2 text-lg"><Tent size={20} className="text-[#F4A261]" />公用裝備認領<span className="text-sm font-normal text-[#8C7B65]">({publicCount})</span></h3>
           <div className="flex items-center gap-2"><span className="text-xs text-[#8C7B65] bg-white/60 px-2 py-1 rounded-full">多人協作</span>{isPublicOpen ? <ChevronUp size={20} className="text-[#8C7B65]" /> : <ChevronDown size={20} className="text-[#8C7B65]" />}</div>
         </div>
         
         {isPublicOpen && (
-          <div className={`divide-y divide-[#E0D8C0] max-h-[500px] ${SCROLLBAR_STYLE}`}>
-            {publicGear.map(item => {
-              const isMine = item.owner?.id === currentUser.id;
-              // 鎖定邏輯：如果有人認領了，且不是我，且我不是管理員 -> 鎖定
-              const isLocked = !!item.owner && !isMine && !currentUser.isAdmin; 
-              const isAssigning = String(assigningItemId) === String(item.id);
-              
-              // 刪除權限：無人認領(可刪)，我的(可刪)，管理員(可刪)
-              const canDelete = !item.owner || isMine || currentUser.isAdmin;
-
-              return (
-                <div key={item.id} className={`p-4 flex items-center justify-between transition-colors ${isMine ? 'bg-[#7BC64F]/10' : ''}`}>
-                  <div className="flex-1 pr-2">
-                    <div className="font-bold text-[#5D4632] flex flex-wrap items-center gap-2">
-                      {item.required && ( <span className="text-[#E76F51] flex items-center gap-0.5 text-xs font-bold bg-[#E76F51]/10 px-2 py-0.5 rounded-full whitespace-nowrap"><Star size={10} fill="currentColor" /> 必帶</span> )}
-                      <span className="break-all">{item.name}</span>
-                      {item.isCustom && !item.required && <span className="text-[10px] bg-[#8ECAE6]/20 text-[#219EBC] px-2 py-0.5 rounded-full whitespace-nowrap">自訂</span>}
-                    </div>
-                    <div className="text-xs text-[#8C7B65] mt-1.5 flex items-center gap-1">
-                      {item.owner ? ( <span className={`px-2 py-0.5 rounded-full flex items-center gap-1 ${isMine ? 'bg-[#7BC64F]/20 text-[#38661d]' : 'bg-[#E0D8C0]/50 text-[#5D4632]'}`}>{isLocked && <Lock size={10} />}{item.owner.name} 已認領</span> ) : ( <span className="text-[#F4A261] font-bold bg-[#F4A261]/10 px-2 py-0.5 rounded-full">🔴 等人認領</span> )}
-                    </div>
-                  </div>
-                  
-                  <div className="flex items-center gap-2 flex-shrink-0">
-                    {isAssigning ? (
-                         <div className="absolute right-4 bg-white shadow-xl border-2 border-[#E76F51] rounded-2xl p-2 z-20 flex gap-2 items-center animate-fade-in max-w-[250px] overflow-x-auto">
-                            <button onClick={() => handleClaim(item.id, null)} className="w-8 h-8 rounded-full bg-[#E0D8C0] text-white flex items-center justify-center shrink-0 hover:bg-[#E76F51]" title="無人認領"><Ban size={14} /></button>
-                            {members.map(m => ( <button key={m.id} onClick={() => handleClaim(item.id, { id: m.id, name: m.name })} className="w-8 h-8 rounded-full bg-[#E9F5D8] border border-[#7BC64F] text-sm shrink-0 hover:scale-110 transition-transform" title={`指派給 ${m.name}`}>{m.avatar}</button> ))}
-                            <button onClick={() => setAssigningItemId(null)} className="ml-1 text-[#8C7B65]"><X size={16}/></button>
-                         </div>
-                    ) : (
-                        <button onClick={() => { if (currentUser.isAdmin) { setAssigningItemId(String(item.id)); } else { handleClaim(item.id); } }} disabled={isLocked} className={`px-4 py-2.5 rounded-full text-sm font-bold transition-all shadow-sm active:scale-95 ${isMine ? 'bg-white border-2 border-[#7BC64F] text-[#7BC64F] hover:bg-[#7BC64F]/10' : item.owner && currentUser.isAdmin ? 'bg-[#E76F51] text-white hover:bg-[#D65F41] ring-2 ring-offset-1 ring-[#E76F51]/30' : isLocked ? 'bg-[#E0D8C0] text-white cursor-not-allowed' : 'bg-[#F4A261] text-white hover:bg-[#E76F51]'}`}>{isMine ? '取消' : (item.owner && currentUser.isAdmin) ? '更改分配' : isLocked ? '鎖定' : '我帶'}</button>
-                    )}
-                    
-                    {/* Delete button logic refined for "Mistake Add" */}
-                    {canDelete ? (
-                        <button 
-                            type="button"
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                handleDeleteItem(item.id);
-                            }}
-                            className={`p-2.5 rounded-full shadow-sm active:scale-95 transition-all cursor-pointer ${
-                                !item.owner 
-                                    ? 'bg-[#E0D8C0] text-white hover:bg-[#E76F51]' // Unclaimed: Less warning color initially
-                                    : 'bg-[#E76F51] text-white hover:bg-[#D65F41]' // Claimed: Red warning
-                            }`}
-                            title={!item.owner ? "刪除 (無人認領)" : "刪除"}
-                        >
-                            <Trash2 size={16} fill="white" className="pointer-events-none"/>
-                        </button>
-                    ) : (
-                        <button disabled className="p-2.5 text-[#E0D8C0] cursor-not-allowed opacity-50" title="無法刪除他人認領的裝備">
-                            <Trash2 size={16} />
-                        </button>
-                    )}
-                  </div>
-                </div>
-              );
+          <div className={`p-4 ${SCROLLBAR_STYLE} max-h-[600px]`}>
+            {publicCount === 0 && ( <div className="text-center text-[#8C7B65] text-sm italic py-8">目前沒有公用裝備需求</div> )}
+            
+            {orderedCategories.map(cat => {
+                if (!publicGear[cat] || publicGear[cat].length === 0) return null;
+                return <RenderGroup key={cat} category={cat} items={publicGear[cat]} type="public" />;
             })}
-            {publicGear.length === 0 && ( <div className="p-8 text-center text-[#8C7B65] text-sm italic">目前沒有公用裝備需求</div> )}
           </div>
         )}
       </div>
@@ -236,34 +351,22 @@ const GearSection: React.FC<GearSectionProps> = ({ gearList, setGearList, curren
       {/* 2. Personal Gear */}
       <div className="bg-[#FFFEF5] rounded-3xl shadow-sm border border-[#E0D8C0] overflow-hidden">
         <div onClick={() => setIsPersonalOpen(!isPersonalOpen)} className="bg-[#8ECAE6]/30 px-5 py-4 border-b border-[#E0D8C0] flex justify-between items-center cursor-pointer hover:bg-[#8ECAE6]/40 transition-colors">
-          <h3 className="font-bold text-[#5D4632] flex items-center gap-2 text-lg"><User size={20} className="text-[#219EBC]" />個人裝備 (僅自己可見)<span className="text-sm font-normal text-[#8C7B65]">({personalGear.length})</span></h3>
+          <h3 className="font-bold text-[#5D4632] flex items-center gap-2 text-lg"><User size={20} className="text-[#219EBC]" />個人裝備 (僅自己可見)<span className="text-sm font-normal text-[#8C7B65]">({personalCount})</span></h3>
           <div className="text-[#8C7B65]">{isPersonalOpen ? <ChevronUp size={20} /> : <ChevronDown size={20} />}</div>
         </div>
         
         {isPersonalOpen && (
-          <div className={`p-4 space-y-3 max-h-[500px] ${SCROLLBAR_STYLE}`}>
+          <div className={`p-4 space-y-3 max-h-[600px] ${SCROLLBAR_STYLE}`}>
             <div className="text-xs text-[#8C7B65] bg-[#F9F7F2] p-2 rounded-xl mb-2 flex items-center gap-2">
                 <AlertCircle size={14}/> 這裡的裝備是「每個人都要帶」的清單，只有您自己看得到勾選狀態。
             </div>
-            {personalGear.map(item => (
-              <div key={item.id} className="flex items-center gap-3 cursor-pointer p-3 hover:bg-[#E9F5D8] rounded-2xl group transition-all" onClick={() => handlePersonalCheck(item.id)}>
-                <div className={`w-8 h-8 rounded-full border-2 flex items-center justify-center transition-all flex-shrink-0 ${item.status === 'packed' ? 'bg-[#219EBC] border-[#219EBC] text-white' : 'border-[#E0D8C0] bg-white'}`}>{item.status === 'packed' && <Check size={18} />}</div>
-                <span className={`flex-1 font-medium text-base ${item.status === 'packed' ? 'text-[#8C7B65] line-through' : 'text-[#5D4632]'}`}>{item.name}</span>
-                {/* Delete button strictly using handleDeleteItem */}
-                <button 
-                    type="button"
-                    onClick={(e) => {
-                        e.stopPropagation();
-                        handleDeleteItem(item.id);
-                    }}
-                    className="p-2 bg-[#E76F51] text-white rounded-full shadow-sm hover:bg-[#D65F41] active:scale-95 transition-all cursor-pointer opacity-20 group-hover:opacity-100"
-                    title="刪除"
-                >
-                    <Trash2 size={14} fill="white" className="pointer-events-none"/>
-                </button>
-              </div>
-            ))}
-            {personalGear.length === 0 && ( <div className="text-center text-[#8C7B65] text-sm italic p-2">目前清單是空的，請從下方新增</div> )}
+            
+            {personalCount === 0 && ( <div className="text-center text-[#8C7B65] text-sm italic p-2">目前清單是空的，請從下方新增</div> )}
+
+            {orderedCategories.map(cat => {
+                if (!personalGear[cat] || personalGear[cat].length === 0) return null;
+                return <RenderGroup key={cat} category={cat} items={personalGear[cat]} type="personal" />;
+            })}
           </div>
         )}
       </div>
